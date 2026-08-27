@@ -36,11 +36,15 @@ class OllamaAI:
     def is_available(self) -> bool:
         """Checks if the Ollama service is running and accessible."""
         try:
-            # We can check by listing models
-            models = ollama.list()
-            return True
+            import urllib.request
+            res = urllib.request.urlopen("http://localhost:11434/api/tags", timeout=2)
+            return res.getcode() == 200
         except Exception:
-            return False
+            try:
+                models = ollama.list()
+                return True
+            except Exception:
+                return False
 
     def generate(self, prompt: str) -> str:
         """Public method to generate text using the local AI model."""

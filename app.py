@@ -50,12 +50,13 @@ def get_notifier():
 # Check Ollama Connection Live
 def get_ollama_status():
     try:
-        ollama = get_ollama_client()
-        if ollama.is_available():
+        import urllib.request
+        res = urllib.request.urlopen("http://localhost:11434/api/tags", timeout=2)
+        if res.getcode() == 200:
             return "🟢 Connected"
-        return "🔴 Disconnected"
     except Exception:
-        return "🔴 Disconnected"
+        pass
+    return "🔴 Disconnected"
 
 st.session_state.ollama_status = get_ollama_status()
 
@@ -64,7 +65,14 @@ st.sidebar.title("🤖 Local AI Job Agent")
 page = st.sidebar.radio("Navigation", ["📋 Add Job", "📊 Job Pipeline", "🚀 Apply", "⚙️ Settings"])
 
 st.sidebar.divider()
-st.sidebar.markdown(f"**Ollama Status:** {st.session_state.ollama_status}")
+col_st1, col_st2 = st.sidebar.columns([3, 1])
+with col_st1:
+    st.markdown(f"**Ollama:** {st.session_state.ollama_status}")
+with col_st2:
+    if st.button("🔄", help="Refresh AI Connection"):
+        st.cache_resource.clear()
+        st.rerun()
+
 settings = load_settings()
 model_name = settings.get('ollama', {}).get('model', 'phi3:mini')
 st.sidebar.caption(f"Model: `{model_name}` (Local)")
