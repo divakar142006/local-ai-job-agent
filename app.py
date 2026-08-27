@@ -1,0 +1,514 @@
+import sys
+import os
+import time
+import json
+import streamlit as st
+
+# Setup path for local imports
+sys.path.insert(0, 'D:\\job-agent')
+
+from database.models import Job, Application, Notification, initialize_db
+from agents.scraper import JobScraper
+from agents.matcher import JobMatcher
+from agents.cover_letter import CoverLetterGenerator
+from agents.form_filler import FormFiller
+from agents.notifier import SMSNotifier
+from utils.helpers import load_profile, load_keywords, load_settings, save_yaml
+from utils.ollama_client import OllamaAI
+
+# UI Setup
+st.set_page_config(page_title="Local AI Job Agent", page_icon="🤖", layout="wide")
+
+# Initialize Database
+initialize_db()
+
+# Caching and Initialization
+@st.cache_resource
+def get_ollama_client():
+    return OllamaAI()
+
+@st.cache_resource
+def get_scraper():
+    return JobScraper()
+
+@st.cache_resource
+def get_matcher():
+    return JobMatcher()
+
+@st.cache_resource
+def get_cover_letter_generator():
+    return CoverLetterGenerator()
+
+@st.cache_resource
+def get_form_filler():
+    return FormFiller()
+
+@st.cache_resource
+def get_notifier():
+    return SMSNotifier()
+
+# Check Ollama Connection Live
+def get_ollama_status():
+    try:
+        ollama = get_ollama_client()
+        if ollama.is_available():
+            return "🟢 Connected"
+        return "🔴 Disconnected"
+    except Exception:
+        return "🔴 Disconnected"
+
+st.session_state.ollama_status = get_ollama_status()
+
+# Sidebar Navigation
+st.sidebar.title("🤖 Local AI Job Agent")
+page = st.sidebar.radio("Navigation", ["📋 Add Job", "📊 Job Pipeline", "🚀 Apply", "⚙️ Settings"])
+
+st.sidebar.divider()
+st.sidebar.markdown(f"**Ollama Status:** {st.session_state.ollama_status}")
+settings = load_settings()
+model_name = settings.get('ollama', {}).get('model', 'phi3:mini')
+st.sidebar.caption(f"Model: `{model_name}` (Local)")
+
+# Sidebar Stats
+try:
+    jobs = Job.select()
+    total_jobs = jobs.count()
+    applied_jobs = jobs.where(Job.status == "applied").count()
+    matched_jobs = jobs.where((Job.status == "matched") | (Job.status == "applied")).count()
+    match_rate = int((matched_jobs / total_jobs * 100)) if total_jobs > 0 else 0
+except Exception:
+    total_jobs = applied_jobs = match_rate = 0
+
+st.sidebar.metric("Total Jobs", total_jobs)
+st.sidebar.metric("Applications", applied_jobs)
+st.sidebar.metric("Match Rate", f"{match_rate}%")
+
+# Helper to get cover letter for a job
+def get_job_cover_letter(job_instance):
+    try:
+        app = job_instance.applications.first()
+        return app.cover_letter if app else ""
+    except Exception:
+        return ""
+
+# Helper to set cover letter for a job
+def set_job_cover_letter(job_instance, cl_text):
+    try:
+        app, created = Application.get_or_create(job=job_instance)
+        app.cover_letter = cl_text
+        app.save()
+    except Exception as e:
+        st.error(f"Error saving cover letter: {e}")
+
+# =====================================================================
+# PAGE 1: ADD JOB
+# =====================================================================
+if page == "📋 Add Job":
+    st.header("📋 Add & Analyze Job")
+    st.write("Paste a job URL from LinkedIn / Naukri or paste the raw description directly. The local AI will evaluate your fit and draft a custom cover letter.")
+
+    col_url, col_desc = st.columns([1, 1])
+    with col_url:
+        job_url = st.text_input("Job URL (LinkedIn, Naukri, or Company Career Page)")
+    with col_desc:
+        job_desc = st.text_area("Or Paste Job Description Text", height=120)
+
+    if st.button("🚀 Analyze Job with AI", type="primary"):
+        if not job_url and not job_desc.strip():
+            st.error("Please provide either a Job URL or paste the job description text.")
+        else:
+            with st.spinner("Scraping and analyzing with local AI model..."):
+                try:
+                    scraper = get_scraper()
+                    matcher = get_matcher()
+                    cl_gen = get_cover_letter_generator()
+                    ollama = get_ollama_client()
+
+                    # 1. Scrape / Parse
+                    if job_url:
+                        scraped_data = scraper.scrape_url(job_url)
+                        if not scraped_data.get('description'):
+                            scraped_data['description'] = job_desc or ""
+                    else:
+                        scraped_data = scraper.scrape_text(job_desc)
+
+                    # 2. Extract structured details with Ollama if title is unknown
+                    if ollama.is_available() and scraped_data.get('title') in ['Unknown Title', 'Pasted Job', 'Error', '']:
+                        extracted = ollama.analyze_job(scraped_data.get('description', ''))
+                        if extracted and isinstance(extracted, dict):
+                            scraped_data['title'] = extracted.get('title') or scraped_data.get('title')
+                            scraped_data['company'] = extracted.get('company') or scraped_data.get('company')
+                            scraped_data['location'] = extracted.get('location') or scraped_data.get('location')
+                            if extracted.get('salary'):
+                                scraped_data['salary'] = extracted.get('salary')
+
+                    # 3. Match against Candidate Profile
+                    match_result = matcher.match_job(scraped_data)
+                    match_score = int(match_result.get('score', 0))
+                    reasoning = match_result.get('reasoning', '')
+                    matching_skills = match_result.get('matching_skills', [])
+                    missing_skills = match_result.get('missing_skills', [])
+
+                    # 4. Generate Tailored Cover Letter
+                    cover_letter = cl_gen.generate(scraped_data)
+
+                    st.session_state.current_analysis = {
+                        "url": job_url or scraped_data.get('url', ''),
+                        "title": scraped_data.get('title', 'Software Developer'),
+                        "company": scraped_data.get('company', 'Hiring Company'),
+                        "location": scraped_data.get('location', 'Remote / Hybrid'),
+                        "description": scraped_data.get('description', ''),
+                        "salary": scraped_data.get('salary', 'Not specified'),
+                        "score": match_score,
+                        "reasoning": reasoning,
+                        "matching_skills": matching_skills,
+                        "missing_skills": missing_skills,
+                        "cover_letter": cover_letter
+                    }
+                    st.success("Analysis complete!")
+                except Exception as e:
+                    st.error(f"Error during analysis: {e}")
+
+    # Display Analysis Results
+    if "current_analysis" in st.session_state:
+        data = st.session_state.current_analysis
+        st.divider()
+        st.subheader("🎯 Analysis Results")
+
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Job Title", data["title"])
+        col2.metric("Company", data["company"])
+        col3.metric("Location", data["location"])
+
+        score = data["score"]
+        if score >= 70:
+            score_color = "green"
+            score_badge = "🟢 High Match"
+        elif score >= 40:
+            score_color = "orange"
+            score_badge = "🟠 Medium Match"
+        else:
+            score_color = "red"
+            score_badge = "🔴 Low Match"
+
+        col4.markdown(f"### Score: <span style='color:{score_color}'>{score}%</span><br><small>{score_badge}</small>", unsafe_allow_html=True)
+
+        col_skills1, col_skills2 = st.columns(2)
+        with col_skills1:
+            st.success(f"**Matching Skills:** {', '.join(data['matching_skills']) if data['matching_skills'] else 'Profile matched general criteria'}")
+        with col_skills2:
+            st.warning(f"**Missing / Desired Skills:** {', '.join(data['missing_skills']) if data['missing_skills'] else 'None detected'}")
+
+        with st.expander("🤖 AI Match Reasoning", expanded=True):
+            st.write(data["reasoning"])
+
+        with st.expander("✍️ Generated Tailored Cover Letter", expanded=True):
+            data["cover_letter"] = st.text_area("Review and Edit Cover Letter", value=data["cover_letter"], height=250)
+
+        col_btn1, col_btn2 = st.columns([1, 4])
+        with col_btn1:
+            if st.button("💾 Save to Pipeline", type="primary"):
+                try:
+                    new_job = Job.create(
+                        title=data["title"],
+                        company=data["company"],
+                        location=data["location"],
+                        url=data["url"],
+                        description=data["description"],
+                        salary=data["salary"],
+                        status="matched" if score >= 40 else "new",
+                        match_score=score,
+                        match_reasoning=data["reasoning"]
+                    )
+                    Application.create(
+                        job=new_job,
+                        cover_letter=data["cover_letter"],
+                        status="ready" if score >= 40 else "draft"
+                    )
+                    st.success("✅ Job saved to your pipeline!")
+                    st.toast("Job saved to pipeline!")
+                    del st.session_state.current_analysis
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Failed to save job: {e}")
+
+# =====================================================================
+# PAGE 2: JOB PIPELINE
+# =====================================================================
+elif page == "📊 Job Pipeline":
+    st.header("📊 Job Application Pipeline")
+
+    tabs = st.tabs(["All Jobs", "Matched", "New", "Applied", "Rejected"])
+    sort_by = st.radio("Sort by", ["Highest score first", "Newest first"], horizontal=True)
+
+    def display_jobs(query):
+        job_list = list(query)
+        if not job_list:
+            st.info("No jobs found in this category.")
+            return
+
+        for job in job_list:
+            score = job.match_score if job.match_score is not None else 0
+            if score >= 70:
+                badge = "🟢"
+            elif score >= 40:
+                badge = "🟠"
+            else:
+                badge = "🔴"
+
+            created_str = job.created_at.strftime('%Y-%m-%d') if hasattr(job.created_at, 'strftime') else str(job.created_at)[:10]
+
+            with st.expander(f"{badge} {job.title} at {job.company} — Match: {score}% | Status: [{job.status.upper()}] — Added: {created_str}"):
+                col_left, col_right = st.columns([3, 1])
+
+                with col_left:
+                    st.write(f"**Location:** {job.location or 'Not specified'}")
+                    if job.url:
+                        st.markdown(f"**Application Link:** [{job.url}]({job.url})")
+                    if job.match_reasoning:
+                        st.write(f"**Match Analysis:** {job.match_reasoning}")
+
+                    with st.expander("Full Job Description"):
+                        st.write(job.description)
+
+                    current_cl = get_job_cover_letter(job)
+                    if current_cl:
+                        with st.expander("Tailored Cover Letter"):
+                            new_cl = st.text_area("Cover Letter", value=current_cl, height=180, key=f"cl_view_{job.id}")
+                            if new_cl != current_cl:
+                                set_job_cover_letter(job, new_cl)
+
+                with col_right:
+                    st.write("**Quick Actions:**")
+
+                    if st.button("✍️ Regenerate Cover Letter", key=f"gen_{job.id}"):
+                        with st.spinner("Generating with local AI..."):
+                            cl_gen = get_cover_letter_generator()
+                            new_letter = cl_gen.generate({
+                                'title': job.title,
+                                'company': job.company,
+                                'description': job.description
+                            })
+                            set_job_cover_letter(job, new_letter)
+                            st.success("Cover letter updated!")
+                            st.rerun()
+
+                    if st.button("✅ Mark as Applied", key=f"app_{job.id}"):
+                        job.status = "applied"
+                        job.save()
+                        notifier = get_notifier()
+                        notifier.notify_applied(job.title, job.company)
+                        st.success("Marked as applied!")
+                        st.rerun()
+
+                    if st.button("❌ Mark as Rejected", key=f"rej_{job.id}"):
+                        job.status = "rejected"
+                        job.save()
+                        st.info("Marked as rejected.")
+                        st.rerun()
+
+    base_query = Job.select()
+    if sort_by == "Highest score first":
+        base_query = base_query.order_by(Job.match_score.desc())
+    else:
+        base_query = base_query.order_by(Job.created_at.desc())
+
+    with tabs[0]:
+        display_jobs(base_query)
+    with tabs[1]:
+        display_jobs(base_query.where((Job.status == "matched") | (Job.status == "new")).where(Job.match_score >= 40))
+    with tabs[2]:
+        display_jobs(base_query.where(Job.status == "new"))
+    with tabs[3]:
+        display_jobs(base_query.where(Job.status == "applied"))
+    with tabs[4]:
+        display_jobs(base_query.where(Job.status == "rejected"))
+
+# =====================================================================
+# PAGE 3: APPLY
+# =====================================================================
+elif page == "🚀 Apply":
+    st.header("🚀 Semi-Automated Application")
+    st.write("Select a job to pre-fill your information in a visible browser window. You can review the filled form and click submit.")
+
+    eligible_jobs = list(Job.select().where(Job.status != 'applied').order_by(Job.match_score.desc()))
+    if not eligible_jobs:
+        st.info("No active jobs ready for application. Add some jobs on the 'Add Job' page first!")
+    else:
+        job_options = {f"{j.title} at {j.company} (Score: {j.match_score}%)": j for j in eligible_jobs}
+        selected_label = st.selectbox("Select Target Job", list(job_options.keys()))
+        selected_job = job_options[selected_label]
+
+        col_j1, col_j2 = st.columns([2, 1])
+        with col_j1:
+            st.subheader(f"{selected_job.title} at {selected_job.company}")
+            st.write(f"**Location:** {selected_job.location or 'Not specified'}")
+            st.write(f"**URL:** {selected_job.url or 'Manual Entry'}")
+        with col_j2:
+            st.metric("Match Score", f"{selected_job.match_score}%")
+
+        current_cl = get_job_cover_letter(selected_job)
+        cl_text = st.text_area("Cover Letter for this Application", value=current_cl, height=250)
+
+        col_act1, col_act2, col_act3 = st.columns(3)
+
+        with col_act1:
+            if st.button("🌐 Open & Pre-fill Form with Playwright", type="primary"):
+                if not selected_job.url or not selected_job.url.startswith("http"):
+                    st.error("Please provide a valid application URL for this job.")
+                else:
+                    with st.spinner("Launching visible browser and filling form fields..."):
+                        try:
+                            filler = get_form_filler()
+                            res = filler.open_and_prefill(selected_job.url, cover_letter=cl_text)
+                            if res.get('status') == 'opened':
+                                st.success("✅ Browser opened! Review the form in your browser window and click Submit.")
+                                st.info(f"Fields automatically filled: {', '.join(res.get('fields_filled', []))}")
+                            else:
+                                st.warning(f"Form status: {res.get('message')}")
+                        except Exception as e:
+                            st.error(f"Error pre-filling form: {e}")
+
+        with col_act2:
+            if st.button("✍️ Regenerate Cover Letter"):
+                with st.spinner("Generating fresh cover letter..."):
+                    cl_gen = get_cover_letter_generator()
+                    new_cl = cl_gen.generate({
+                        'title': selected_job.title,
+                        'company': selected_job.company,
+                        'description': selected_job.description
+                    })
+                    set_job_cover_letter(selected_job, new_cl)
+                    st.rerun()
+
+        with col_act3:
+            if st.button("🎉 Mark as Successfully Applied"):
+                selected_job.status = "applied"
+                selected_job.save()
+                set_job_cover_letter(selected_job, cl_text)
+
+                notifier = get_notifier()
+                notifier.notify_applied(selected_job.title, selected_job.company)
+
+                st.balloons()
+                st.success(f"Marked as applied to {selected_job.title} at {selected_job.company}!")
+                time.sleep(1.5)
+                st.rerun()
+
+# =====================================================================
+# PAGE 4: SETTINGS
+# =====================================================================
+elif page == "⚙️ Settings":
+    st.header("⚙️ Settings & Configuration")
+
+    profile = load_profile()
+    keywords = load_keywords()
+    settings = load_settings()
+
+    # --- Profile Section ---
+    st.subheader("👤 Candidate Profile")
+    with st.form("profile_form"):
+        col_p1, col_p2 = st.columns(2)
+        with col_p1:
+            name = st.text_input("Full Name", value=profile.get('name', ''))
+            email = st.text_input("Email", value=profile.get('email', ''))
+            phone = st.text_input("Phone Number", value=profile.get('phone', ''))
+            location = st.text_input("Location / City", value=profile.get('location', ''))
+        with col_p2:
+            current_title = st.text_input("Current Title", value=profile.get('current_title', ''))
+            experience_years = st.number_input("Years of Experience", value=int(profile.get('experience_years', 2)), min_value=0, max_value=50)
+            linkedin = st.text_input("LinkedIn Profile URL", value=profile.get('linkedin_url', ''))
+            resume_path = st.text_input("Resume PDF Path", value=profile.get('resume_path', ''))
+
+        skills_list = profile.get('skills', [])
+        skills_text = st.text_area("Skills (comma-separated)", value=", ".join(skills_list) if isinstance(skills_list, list) else str(skills_list))
+        summary = st.text_area("Professional Summary", value=profile.get('summary', ''), height=100)
+
+        if st.form_submit_button("💾 Save Profile", type="primary"):
+            profile['name'] = name
+            profile['email'] = email
+            profile['phone'] = phone
+            profile['location'] = location
+            profile['current_title'] = current_title
+            profile['experience_years'] = experience_years
+            profile['linkedin_url'] = linkedin
+            profile['resume_path'] = resume_path
+            profile['summary'] = summary
+            profile['skills'] = [s.strip() for s in skills_text.split(",") if s.strip()]
+
+            save_yaml(os.path.join(r"D:\job-agent", "config", "profile.yaml"), profile)
+            st.success("Candidate profile updated successfully!")
+
+    st.divider()
+
+    # --- Keywords Section ---
+    st.subheader("🎯 Job Search Criteria & Filters")
+    with st.form("keywords_form"):
+        target_titles = keywords.get('target_titles', [])
+        target_text = st.text_area("Target Job Titles (comma-separated)", value=", ".join(target_titles) if isinstance(target_titles, list) else str(target_titles))
+
+        locations = keywords.get('preferred_locations', [])
+        loc_text = st.text_area("Preferred Locations (comma-separated)", value=", ".join(locations) if isinstance(locations, list) else str(locations))
+
+        excludes = keywords.get('exclude_keywords', [])
+        exclude_text = st.text_area("Exclude Keywords (e.g. Senior, Lead, 10+ years)", value=", ".join(excludes) if isinstance(excludes, list) else str(excludes))
+
+        min_score = st.slider("Minimum Match Score (%) to Notify", min_value=10, max_value=100, value=int(keywords.get('min_match_score', 60)))
+
+        if st.form_submit_button("💾 Save Search Criteria", type="primary"):
+            keywords['target_titles'] = [s.strip() for s in target_text.split(",") if s.strip()]
+            keywords['preferred_locations'] = [s.strip() for s in loc_text.split(",") if s.strip()]
+            keywords['exclude_keywords'] = [s.strip() for s in exclude_text.split(",") if s.strip()]
+            keywords['min_match_score'] = min_score
+
+            save_yaml(os.path.join(r"D:\job-agent", "config", "keywords.yaml"), keywords)
+            st.success("Job search criteria updated!")
+
+    st.divider()
+
+    # --- Twilio SMS Section ---
+    st.subheader("📱 Twilio SMS Notifications")
+    with st.form("twilio_form"):
+        twilio_cfg = settings.get('twilio', {})
+        sid = st.text_input("Twilio Account SID", value=twilio_cfg.get('account_sid', ''), type="password")
+        token = st.text_input("Twilio Auth Token", value=twilio_cfg.get('auth_token', ''), type="password")
+        from_num = st.text_input("Twilio Virtual Number (From)", value=twilio_cfg.get('from_number', ''))
+        to_num = st.text_input("Your Mobile Number (To)", value=twilio_cfg.get('to_number', ''))
+
+        col_t1, col_t2 = st.columns(2)
+        with col_t1:
+            if st.form_submit_button("💾 Save Twilio Settings"):
+                if 'twilio' not in settings:
+                    settings['twilio'] = {}
+                settings['twilio']['account_sid'] = sid
+                settings['twilio']['auth_token'] = token
+                settings['twilio']['from_number'] = from_num
+                settings['twilio']['to_number'] = to_num
+                save_yaml(os.path.join(r"D:\job-agent", "config", "settings.yaml"), settings)
+                st.success("Twilio settings saved!")
+        with col_t2:
+            if st.form_submit_button("📩 Send Test SMS"):
+                notifier = get_notifier()
+                if notifier.test_connection():
+                    st.success("Test notification triggered!")
+                else:
+                    st.info("Twilio live credentials not configured. Notification was logged locally.")
+
+    st.divider()
+
+    # --- AI Model Section ---
+    st.subheader("🤖 Local AI Engine (Ollama)")
+    col_ai1, col_ai2 = st.columns(2)
+    with col_ai1:
+        st.write(f"**Connection:** {st.session_state.ollama_status}")
+        st.write(f"**Loaded Model:** `{model_name}`")
+        st.write("**Host:** `http://localhost:11434`")
+    with col_ai2:
+        if st.button("🧪 Test Local AI Model", type="primary"):
+            with st.spinner("Testing local model response..."):
+                try:
+                    ollama = get_ollama_client()
+                    response = ollama.generate("Say 'Hello! Your Local AI Job Agent is fully operational.'")
+                    st.success(f"AI Response: {response}")
+                except Exception as e:
+                    st.error(f"AI Test failed: {e}")

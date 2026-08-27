@@ -1,0 +1,38 @@
+# =====================================================================
+# Job Search & Filtering Keywords Configuration
+# =====================================================================
+# This configuration determines how the scraper and matching agents filter
+# and score job opportunities.
+
+# Target job titles to search for across job boards
+target_titles:
+  - "Python Developer"
+  - "Software Engineer"
+  - "Data Analyst"
+  - "Backend Developer"
+  - "Junior Python Developer"
+
+# Minimum match score (0-100) calculated by AI matcher to consider a job
+min_match_score: 60
+
+# Keywords to exclude jobs (e.g. overqualified roles, specific technologies)
+exclude_keywords:
+  - "senior"
+  - "lead"
+  - "10+ years"
+  - "principal"
+  - "architect"
+  - "staff engineer"
+
+# Desired job locations
+preferred_locations:
+  - "Hyderabad"
+  - "Bangalore"
+  - "Remote"
+  - "Hybrid"
+
+# Preferred employment types
+preferred_job_types:
+  - "Full-time"
+  - "Remote"
+  - "Contract"

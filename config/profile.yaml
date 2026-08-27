@@ -1,0 +1,53 @@
+# =====================================================================
+# Candidate Profile Configuration
+# =====================================================================
+# Fill in your details below. These details will be used by the Job Agent
+# to match job descriptions and automatically fill application forms.
+
+# Basic Personal Information
+name: "Your Full Name"
+email: "your.email@example.com"
+phone: "+91 98765 43210" # Phone number in +91 format (E.164 standard)
+location: "Hyderabad, India"
+
+# Professional Overview
+experience_years: 2 # Total years of professional experience (integer or float)
+current_title: "Junior Python Developer"
+
+# Technical & Professional Skills
+skills:
+  - "Python"
+  - "Django"
+  - "FastAPI"
+  - "PostgreSQL"
+  - "Docker"
+  - "Git"
+  - "REST APIs"
+
+# Educational Background
+education:
+  - degree: "Bachelor of Technology in Computer Science"
+    college: "Your University / College Name"
+    year: 2024
+
+# Links & Documents
+resume_path: "D:/path/to/resume.pdf" # Absolute path to your PDF resume
+linkedin_url: "https://www.linkedin.com/in/your-profile"
+github_url: "https://github.com/your-username"
+portfolio_url: "https://yourportfolio.com"
+
+# Professional Summary
+summary: |
+  Motivated and detail-oriented Software Engineer with experience in building
+  scalable backend services, web applications, and automated workflows using Python.
+  Passionate about clean code, problem solving, and continuous learning.
+
+# Work Experience History
+work_experience:
+  - company: "Example Tech Solutions Pvt Ltd"
+    title: "Software Engineer Intern"
+    duration: "Jan 2024 - Present"
+    description: |
+      Developed RESTful APIs using FastAPI and PostgreSQL.
+      Automated daily data ingestion pipelines and improved response times by 25%.
+      Collaborated with cross-functional teams using Git and Agile methodologies.

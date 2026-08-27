@@ -1,0 +1,26 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Database
+database/*.db
+database/*.sqlite3
+*.db
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Secrets & Environment variables
+.env
+config/secrets.yaml
+
+# Playwright & Browsers
+.playwright/
