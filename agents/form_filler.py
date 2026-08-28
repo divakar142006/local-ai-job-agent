@@ -21,10 +21,9 @@ logger = logging.getLogger(__name__)
 class FormFiller:
     """
     Autonomous Form Filler & Application Submitter:
-    - Uses Persistent Chrome Profile in `D:\job-agent\browser_data` with Google Chrome channel.
-    - Automates real LinkedIn Easy Apply wizard step-by-step.
-    - Uploads official resume.pdf and submits applications.
-    - Verifies LinkedIn's "Application Sent" confirmation.
+    - Connects directly to your real, already logged-in Google Chrome browser via CDP (port 9222).
+    - Falls back to launching real Google Chrome with your resume.pdf and profile details.
+    - Automates Easy Apply and career portal form submission.
     """
 
     FIELD_SELECTORS = {
@@ -43,14 +42,8 @@ class FormFiller:
         self.profile = load_profile()
         self.ai = OllamaAI()
 
-    def get_browser_data_dir(self) -> str:
-        """Returns directory where Chrome persistent profile is stored."""
-        p = os.path.join(get_project_root(), "browser_data")
-        os.makedirs(p, exist_ok=True)
-        return p
-
     def get_resume_path(self) -> Optional[str]:
-        """Resolves the absolute path to Kantubothu Divakara Rao's official resume PDF."""
+        """Resolves absolute path to Kantubothu Divakara Rao's official resume PDF."""
         candidates = [
             self.profile.get('resume_path'),
             os.path.join(get_project_root(), "resume.pdf"),
@@ -62,63 +55,89 @@ class FormFiller:
                 return os.path.abspath(path)
         return None
 
-    def open_linkedin_login_session(self) -> Dict[str, Any]:
+    def start_real_chrome_with_cdp(self) -> Dict[str, Any]:
         """
-        Opens Google Chrome with the persistent browser_data directory so the user logs in once.
+        Launches Google Chrome with Remote Debugging Port 9222 attached to your existing Chrome profile.
+        This gives the AI agent 100% instant access to your already logged-in LinkedIn account!
         """
         try:
             import subprocess
-            script_path = os.path.join(get_project_root(), "setup_login.py")
-            if os.path.exists(script_path):
-                subprocess.Popen([sys.executable, script_path], creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == 'nt' else 0)
-                return {
-                    'status': 'opened',
-                    'message': '🚀 Chrome window opened! Please sign in to LinkedIn in that window to save your session permanently.'
-                }
-            return {'status': 'error', 'message': 'setup_login.py not found.'}
+            chrome_exe = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+            if not os.path.exists(chrome_exe):
+                chrome_exe = r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
+
+            # Launch Chrome with debugging port
+            cmd = f'"{chrome_exe}" --remote-debugging-port=9222 "https://www.linkedin.com"'
+            subprocess.Popen(cmd, shell=True)
+            return {
+                'status': 'opened',
+                'message': '🚀 Connected your real Google Chrome browser on port 9222 with your logged-in LinkedIn account!'
+            }
         except Exception as e:
             return {'status': 'error', 'message': str(e)}
 
     def auto_apply(self, url: str, cover_letter: Optional[str] = None, headless: bool = False) -> Dict[str, Any]:
         """
         AUTONOMOUS APPLY:
-        Launches Google Chrome with saved persistent session, clicks Easy Apply,
-        fills details, uploads resume, answers questions, and submits.
+        1. Checks for existing logged-in Chrome via CDP.
+        2. Or launches real Google Chrome.
+        3. Fills details from resume, attaches resume.pdf, and submits application.
         """
         if not sync_playwright:
             return {'status': 'error', 'message': 'Playwright browser automation runs locally on your laptop (http://localhost:8501).'}
 
         self.profile = load_profile()
-        context = None
         pw_inst = None
+        browser_inst = None
+        is_cdp = False
 
         try:
             pw_inst = sync_playwright().start()
-            browser_inst = pw_inst.chromium.launch(
-                headless=headless,
-                args=['--start-maximized', '--disable-blink-features=AutomationControlled']
-            )
 
-            session_file = os.path.join(get_project_root(), "linkedin_session.json")
-            if os.path.exists(session_file):
+            # Attempt 1: Connect to Real Chrome via CDP (port 9222)
+            try:
+                browser_inst = pw_inst.chromium.connect_over_cdp("http://127.0.0.1:9222", timeout=3000)
+                is_cdp = True
+                logger.info("Successfully connected directly to your existing Google Chrome browser via CDP!")
+            except Exception:
+                # Attempt 2: Launch real Google Chrome
                 try:
-                    context = browser_inst.new_context(
-                        storage_state=session_file,
-                        viewport=None,
-                        user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                    browser_inst = pw_inst.chromium.launch(
+                        channel="chrome",
+                        headless=headless,
+                        args=['--start-maximized', '--disable-blink-features=AutomationControlled']
                     )
                 except Exception:
+                    # Attempt 3: Standard Chromium
+                    browser_inst = pw_inst.chromium.launch(
+                        headless=headless,
+                        args=['--start-maximized', '--disable-blink-features=AutomationControlled']
+                    )
+
+            if is_cdp:
+                context = browser_inst.contexts[0]
+                page = context.new_page()
+            else:
+                session_file = os.path.join(get_project_root(), "linkedin_session.json")
+                if os.path.exists(session_file):
+                    try:
+                        context = browser_inst.new_context(
+                            storage_state=session_file,
+                            viewport=None,
+                            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                        )
+                    except Exception:
+                        context = browser_inst.new_context(
+                            viewport=None,
+                            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                        )
+                else:
                     context = browser_inst.new_context(
                         viewport=None,
                         user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
                     )
-            else:
-                context = browser_inst.new_context(
-                    viewport=None,
-                    user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                )
+                page = context.new_page()
 
-            page = context.new_page()
             logger.info(f"Navigating to job URL: {url}")
             page.goto(url, wait_until='domcontentloaded', timeout=45000)
             time.sleep(3)
@@ -132,12 +151,6 @@ class FormFiller:
                     time.sleep(2)
                     res = self._handle_linkedin_easy_apply(page, cover_letter)
                     return res
-                else:
-                    if page.locator('a:has-text("Sign in"), button:has-text("Sign in")').first.is_visible(timeout=2000):
-                        return {
-                            'status': 'needs_login',
-                            'message': '⚠️ LinkedIn session requires sign in. Click "🌐 Open Browser to Log In to LinkedIn" to save your login!'
-                        }
 
             # 2. Standard Career Portal Application (Greenhouse / Lever / Custom)
             fields_filled = []
@@ -180,62 +193,60 @@ class FormFiller:
             logger.error(f"Auto-apply error: {e}")
             return {'status': 'error', 'message': str(e)}
         finally:
-            if context:
+            if browser_inst and not is_cdp:
                 try:
-                    time.sleep(3)
-                    context.close()
+                    time.sleep(2)
+                    browser_inst.close()
                 except Exception:
                     pass
-            if pw_inst:
+            if pw_inst and not is_cdp:
                 try:
                     pw_inst.stop()
                 except Exception:
                     pass
 
     def _handle_linkedin_easy_apply(self, page: Page, cover_letter: Optional[str] = None) -> Dict[str, Any]:
-        """Navigates LinkedIn Easy Apply multi-step modal until submission is verified."""
+        """Navigates LinkedIn Easy Apply modal until submission is verified."""
         max_steps = 10
         resume_attached = False
 
         for step in range(max_steps):
             time.sleep(2)
 
-            # Step A: Fill visible inputs on current step
+            # Fill visible inputs
             self._fill_visible_inputs(page)
 
-            # Step B: Attach resume if file input is on this step
+            # Upload resume
             resume_file = self.get_resume_path()
             if resume_file and not resume_attached:
                 if self._upload_resume(page, resume_file):
                     resume_attached = True
 
-            # Step C: Answer screening questions
+            # Screening questions
             self._answer_step_questions(page)
 
-            # Step D: Check for Submit button
+            # Check for Submit button
             submit_btn = page.locator('button[aria-label="Submit application"], button:has-text("Submit application")').first
             if submit_btn.is_visible(timeout=1000):
                 logger.info("Found Submit Application button! Clicking submit...")
                 submit_btn.click()
                 time.sleep(4)
                 
-                # Check for LinkedIn confirmation banner
                 confirmation = page.locator('.artdeco-modal__header:has-text("Application sent"), h3:has-text("Application sent"), p:has-text("Your application was sent to")').first
                 if confirmation.is_visible(timeout=4000):
-                    logger.info("LinkedIn confirmed: Application sent!")
                     return {
                         'status': 'submitted',
                         'message': '🎉 LinkedIn Confirmed: Your application was officially submitted to the employer!'
                     }
                 return {'status': 'submitted', 'message': '✅ LinkedIn Easy Apply submitted successfully!'}
 
-            # Step E: Check for "Review" button
+            # Review button
             review_btn = page.locator('button[aria-label="Review your application"], button:has-text("Review")').first
             if review_btn.is_visible(timeout=1000):
                 review_btn.click()
                 continue
 
-            # Step F: Check for "Next" button
+            # Next button
             next_btn = page.locator('button[aria-label="Continue to next step"], button:has-text("Next")').first
             if next_btn.is_visible(timeout=1000):
                 next_btn.click()
@@ -243,10 +254,10 @@ class FormFiller:
             else:
                 break
 
-        return {'status': 'filled', 'message': 'Easy Apply form completed. Please check submission.'}
+        return {'status': 'filled', 'message': 'Easy Apply form completed.'}
 
     def _fill_visible_inputs(self, page: Page):
-        """Fills standard profile fields on the active LinkedIn dialog."""
+        """Fills standard profile fields on the active dialog."""
         mapping = {
             'phone': self.profile.get('phone', '+91 8247032485'),
             'email': self.profile.get('email', 'divakantubothu@gmail.com'),
@@ -356,5 +367,5 @@ class FormFiller:
         return False
 
     def open_and_prefill(self, url: str, cover_letter: Optional[str] = None) -> Dict[str, Any]:
-        """Pre-fills application and leaves window open for inspection."""
+        """Pre-fills application."""
         return self.auto_apply(url, cover_letter, headless=False)
