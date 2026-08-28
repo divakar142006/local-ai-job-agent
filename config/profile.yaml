@@ -1,18 +1,18 @@
 # =====================================================================
 # Candidate Profile Configuration
 # =====================================================================
-# Fill in your details below. These details will be used by the Job Agent
-# to match job descriptions and automatically fill application forms.
+# These details are used by the Job Agent to match job descriptions,
+# evaluate match scores, generate cover letters, and auto-fill forms.
 
 # Basic Personal Information
-name: "Your Full Name"
-email: "your.email@example.com"
-phone: "+91 98765 43210" # Phone number in +91 format (E.164 standard)
+name: "Divakar Kantubothu"
+email: "divakantubothu@gmail.com"
+phone: "+91 98765 43210" # You can adjust your phone number anytime in Settings
 location: "Hyderabad, India"
 
 # Professional Overview
-experience_years: 2 # Total years of professional experience (integer or float)
-current_title: "Junior Python Developer"
+experience_years: 2
+current_title: "Python Developer / Software Engineer"
 
 # Technical & Professional Skills
 skills:
@@ -20,34 +20,37 @@ skills:
   - "Django"
   - "FastAPI"
   - "PostgreSQL"
+  - "SQLite"
   - "Docker"
   - "Git"
   - "REST APIs"
+  - "Machine Learning"
+  - "Data Analysis"
 
 # Educational Background
 education:
   - degree: "Bachelor of Technology in Computer Science"
-    college: "Your University / College Name"
+    college: "Engineering College"
     year: 2024
 
 # Links & Documents
-resume_path: "D:/path/to/resume.pdf" # Absolute path to your PDF resume
-linkedin_url: "https://www.linkedin.com/in/your-profile"
-github_url: "https://github.com/your-username"
-portfolio_url: "https://yourportfolio.com"
+resume_path: "D:/resume.pdf"
+linkedin_url: "https://www.linkedin.com/in/divakar-kantubothu"
+github_url: "https://github.com/divakar142006"
+portfolio_url: "https://github.com/divakar142006"
 
 # Professional Summary
 summary: |
-  Motivated and detail-oriented Software Engineer with experience in building
-  scalable backend services, web applications, and automated workflows using Python.
-  Passionate about clean code, problem solving, and continuous learning.
+  Motivated and results-driven Software Engineer with strong proficiency in Python,
+  FastAPI, Django, database management, and building automated data pipelines and web services.
+  Skilled at designing clean APIs, solving complex technical challenges, and integrating AI models.
 
 # Work Experience History
 work_experience:
-  - company: "Example Tech Solutions Pvt Ltd"
-    title: "Software Engineer Intern"
-    duration: "Jan 2024 - Present"
+  - company: "Tech Solutions Pvt Ltd"
+    title: "Software Engineer"
+    duration: "2024 - Present"
     description: |
-      Developed RESTful APIs using FastAPI and PostgreSQL.
-      Automated daily data ingestion pipelines and improved response times by 25%.
-      Collaborated with cross-functional teams using Git and Agile methodologies.
+      Developed RESTful APIs and backend services using FastAPI and Python.
+      Built database models, automated workflows, and integrated third-party APIs.
+      Collaborated using Git version control and Agile methodologies.
