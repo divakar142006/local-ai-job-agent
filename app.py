@@ -461,15 +461,16 @@ elif page == "🚀 Apply":
                                 selected_job.save()
                                 set_job_cover_letter(selected_job, cl_text)
 
+                                if res.get('screenshot'):
+                                    st.session_state['last_submission_screenshot'] = res['screenshot']
+
                                 notifier = get_notifier()
                                 notifier.notify_applied(selected_job.title, selected_job.company)
 
                                 st.balloons()
                                 st.success(f"🎉 Successfully applied to {selected_job.title} at {selected_job.company}!")
                                 st.info(f"✅ Details submitted: {', '.join(res.get('fields_filled', []))} | Official Resume: attached (`resume.pdf`)")
-                                if res.get('screenshot') and os.path.exists(res['screenshot']):
-                                    st.image(res['screenshot'], caption="📸 Live Application Submission Proof", use_container_width=True)
-                                time.sleep(2)
+                                time.sleep(1)
                                 st.rerun()
                             else:
                                 st.warning(f"Application status: {res.get('message')}")
@@ -514,6 +515,14 @@ elif page == "🚀 Apply":
                 st.success(f"Marked as applied to {selected_job.title} at {selected_job.company}!")
                 time.sleep(1.5)
                 st.rerun()
+
+    # --- Live Application Screenshot Proof Card ---
+    proof_file = st.session_state.get('last_submission_screenshot') or os.path.join(get_project_root(), "last_submission_proof.png")
+    if os.path.exists(proof_file):
+        st.divider()
+        st.subheader("📸 Live Application Submission Proof")
+        st.caption("Verified real-time visual proof of the application page captured during submission:")
+        st.image(proof_file, caption="Latest Application Submission Page Proof", use_container_width=True)
 
 # =====================================================================
 # PAGE 5: SETTINGS
