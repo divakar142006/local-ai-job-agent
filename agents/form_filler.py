@@ -199,6 +199,9 @@ class FormFiller:
             self._answer_step_questions(page)
             self._handle_standard_checkboxes(page)
 
+            # Auto-handle OTP verification if prompted
+            self._handle_email_otp_verification(page, settings)
+
             # E. Check for Submit button
             submit_btn = page.locator('button[type="submit"]:has-text("Submit"), button:has-text("Submit Application"), button:has-text("Submit application"), input[type="submit"][value*="Submit" i]').first
             if submit_btn.is_visible(timeout=1000):
@@ -229,6 +232,42 @@ class FormFiller:
             'fields_filled': fields_filled,
             'message': 'Form pre-filled with candidate details and official resume.'
         }
+
+    def _handle_email_otp_verification(self, page: Page, settings: Dict[str, Any]) -> bool:
+        """Detects verification code / OTP input fields and fetches code from Gmail."""
+        otp_selectors = [
+            'input[name*="otp" i]',
+            'input[name*="code" i]',
+            'input[id*="verification" i]',
+            'input[placeholder*="code" i]',
+            'input[placeholder*="verification" i]',
+            'input[aria-label*="code" i]',
+            'input[data-automation-id*="verificationCode" i]'
+        ]
+        
+        for sel in otp_selectors:
+            try:
+                otp_input = page.locator(sel).first
+                if otp_input.is_visible(timeout=1000):
+                    logger.info("Found OTP / verification code input! Fetching OTP from Gmail...")
+                    try:
+                        from utils.email_otp import EmailOTPReader
+                        reader = EmailOTPReader()
+                        code = reader.fetch_latest_otp(timeout_seconds=25)
+                        if code:
+                            otp_input.fill(code)
+                            logger.info(f"Filled OTP code: {code}")
+                            time.sleep(1)
+                            verify_btn = page.locator('button:has-text("Verify"), button:has-text("Confirm"), button:has-text("Submit code"), button:has-text("Continue")').first
+                            if verify_btn.is_visible(timeout=1000):
+                                verify_btn.click()
+                                time.sleep(3)
+                            return True
+                    except Exception as e:
+                        logger.debug(f"OTP auto-fetch error: {e}")
+            except Exception:
+                continue
+        return False
 
     def _try_portal_login(self, page: Page, settings: Dict[str, Any]):
         """Attempts to log in to external portal if credentials exist."""

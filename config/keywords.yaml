@@ -1,46 +1,30 @@
-# =====================================================================
-# Job Search & Filtering Keywords Configuration
-# =====================================================================
-# Optimized for Kantubothu Divakara Rao's skills and experience level
-
-# Target job titles to search and match
-target_titles:
-  - "Python Developer"
-  - "Machine Learning Engineer"
-  - "Data Analyst"
-  - "AI Engineer"
-  - "Software Engineer"
-  - "Backend Developer"
-  - "Python Intern"
-  - "Data Science Intern"
-  - "Junior Software Engineer"
-  - "Graduate Engineer Trainee"
-
-# Minimum match score (0-100) calculated by AI matcher
-min_match_score: 50
-
-# Keywords to exclude jobs (overqualified / irrelevant)
 exclude_keywords:
-  - "senior architect"
-  - "lead architect"
-  - "10+ years"
-  - "director"
-  - "principal engineer"
-
-# Desired job locations
-preferred_locations:
-  - "Hyderabad"
-  - "Bangalore"
-  - "Andhra Pradesh"
-  - "Chennai"
-  - "Pune"
-  - "Remote"
-  - "Hybrid"
-  - "India"
-
-# Preferred employment types
+- fresher
+- entry-level
+- zero experience
+min_match_score: 71
 preferred_job_types:
-  - "Full-time"
-  - "Internship"
-  - "Remote"
-  - "Contract"
+- Full-time
+- Internship
+- Remote
+- Contract
+preferred_locations:
+- Hyderabad
+- Bangalore
+- Andhra Pradesh
+- Chennai
+- Pune
+- Remote
+- Hybrid
+- India
+target_titles:
+- Python Developer
+- Machine Learning Engineer
+- Data Analyst
+- AI Engineer
+- Software Engineer
+- Backend Developer
+- Python Intern
+- Data Science Intern
+- Junior Software Engineer
+- Graduate Engineer Trainee

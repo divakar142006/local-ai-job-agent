@@ -617,7 +617,38 @@ elif page == "⚙️ Settings":
             save_yaml(os.path.join(get_project_root(), "config", "profile.yaml"), profile)
             st.success("✅ Portal credentials saved! The agent will use these to sign in and submit on external career portals.")
             time.sleep(1)
+    st.divider()
+
+    # --- Email Access for Auto-OTP Verification ---
+    st.subheader("📬 Email Access & Auto-OTP Verification")
+    st.write("Give the agent access to your Gmail inbox so it can automatically read OTP codes sent by companies (JPMorgan, Oracle, Workday) and verify your account without asking you:")
+    with st.form("email_otp_form"):
+        email_addr = st.text_input("Gmail Address", value=profile.get('email', 'divakantubothu@gmail.com'))
+        gmail_app_pwd = st.text_input(
+            "Gmail App Password (16 Letters)",
+            value=settings.get('email_app_password', ''),
+            type="password",
+            help="Create a 16-letter App Password in Google Account -> Security -> 2-Step Verification -> App Passwords."
+        )
+        st.caption("👉 [Create a free Gmail App Password in 1 minute](https://myaccount.google.com/apppasswords)")
+
+        if st.form_submit_button("💾 Save Email Access", type="primary"):
+            settings['email_address'] = email_addr.strip()
+            settings['email_app_password'] = gmail_app_pwd.strip()
+            save_yaml(os.path.join(get_project_root(), "config", "settings.yaml"), settings)
+            st.success("✅ Email OTP credentials saved! The agent can now auto-fetch verification codes.")
+            time.sleep(1)
             st.rerun()
+
+    from utils.email_otp import EmailOTPReader
+    if st.button("🧪 Test Email OTP Inbox Connection"):
+        with st.spinner("Connecting to Gmail IMAP..."):
+            reader = EmailOTPReader()
+            t_res = reader.test_connection()
+            if t_res.get('status') == 'success':
+                st.success(t_res.get('message'))
+            else:
+                st.error(t_res.get('message'))
 
     st.divider()
 
