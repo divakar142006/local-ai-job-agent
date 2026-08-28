@@ -6,6 +6,7 @@ import streamlit as st
 
 # Setup path for local imports
 sys.path.insert(0, 'D:\\job-agent')
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from database.models import Job, Application, Notification, initialize_db
 from agents.scraper import JobScraper
@@ -17,10 +18,13 @@ from utils.helpers import load_profile, load_keywords, load_settings, save_yaml
 from utils.ollama_client import OllamaAI
 
 # UI Setup
-st.set_page_config(page_title="Local AI Job Agent", page_icon="🤖", layout="wide")
+st.set_page_config(page_title="AI Job Application Agent", page_icon="🤖", layout="wide")
 
 # Initialize Database
-initialize_db()
+try:
+    initialize_db()
+except Exception as e:
+    st.warning(f"Database note: {e}")
 
 # Caching and Initialization
 @st.cache_resource
@@ -47,35 +51,26 @@ def get_form_filler():
 def get_notifier():
     return SMSNotifier()
 
-# Check Ollama Connection Live
-def get_ollama_status():
-    try:
-        import urllib.request
-        res = urllib.request.urlopen("http://localhost:11434/api/tags", timeout=2)
-        if res.getcode() == 200:
-            return "🟢 Connected"
-    except Exception:
-        pass
-    return "🔴 Disconnected"
-
-st.session_state.ollama_status = get_ollama_status()
+# Check AI Connection Live
+ollama_ai = get_ollama_client()
+ai_info = ollama_ai.get_status_info()
+st.session_state.ai_status = ai_info["status"]
+st.session_state.ai_provider = ai_info["provider"]
 
 # Sidebar Navigation
-st.sidebar.title("🤖 Local AI Job Agent")
+st.sidebar.title("🤖 AI Job Application Agent")
 page = st.sidebar.radio("Navigation", ["📋 Add Job", "📊 Job Pipeline", "🚀 Apply", "⚙️ Settings"])
 
 st.sidebar.divider()
 col_st1, col_st2 = st.sidebar.columns([3, 1])
 with col_st1:
-    st.markdown(f"**Ollama:** {st.session_state.ollama_status}")
+    st.markdown(f"**AI Engine:** {st.session_state.ai_status}")
 with col_st2:
     if st.button("🔄", help="Refresh AI Connection"):
         st.cache_resource.clear()
         st.rerun()
 
-settings = load_settings()
-model_name = settings.get('ollama', {}).get('model', 'phi3:mini')
-st.sidebar.caption(f"Model: `{model_name}` (Local)")
+st.sidebar.caption(f"Provider: `{st.session_state.ai_provider}`")
 
 # Sidebar Stats
 try:
@@ -113,7 +108,7 @@ def set_job_cover_letter(job_instance, cl_text):
 # =====================================================================
 if page == "📋 Add Job":
     st.header("📋 Add & Analyze Job")
-    st.write("Paste a job URL from LinkedIn / Naukri or paste the raw description directly. The local AI will evaluate your fit and draft a custom cover letter.")
+    st.write("Paste a job URL from LinkedIn / Naukri or paste the raw description directly. The AI will evaluate your fit and draft a custom cover letter.")
 
     col_url, col_desc = st.columns([1, 1])
     with col_url:
@@ -125,7 +120,7 @@ if page == "📋 Add Job":
         if not job_url and not job_desc.strip():
             st.error("Please provide either a Job URL or paste the job description text.")
         else:
-            with st.spinner("Scraping and analyzing with local AI model..."):
+            with st.spinner("Scraping and analyzing with AI model..."):
                 try:
                     scraper = get_scraper()
                     matcher = get_matcher()
@@ -140,7 +135,7 @@ if page == "📋 Add Job":
                     else:
                         scraped_data = scraper.scrape_text(job_desc)
 
-                    # 2. Extract structured details with Ollama if title is unknown
+                    # 2. Extract structured details with AI if title is unknown
                     if ollama.is_available() and scraped_data.get('title') in ['Unknown Title', 'Pasted Job', 'Error', '']:
                         extracted = ollama.analyze_job(scraped_data.get('description', ''))
                         if extracted and isinstance(extracted, dict):
@@ -290,7 +285,7 @@ elif page == "📊 Job Pipeline":
                     st.write("**Quick Actions:**")
 
                     if st.button("✍️ Regenerate Cover Letter", key=f"gen_{job.id}"):
-                        with st.spinner("Generating with local AI..."):
+                        with st.spinner("Generating with AI..."):
                             cl_gen = get_cover_letter_generator()
                             new_letter = cl_gen.generate({
                                 'title': job.title,
@@ -375,7 +370,7 @@ elif page == "🚀 Apply":
                             else:
                                 st.warning(f"Form status: {res.get('message')}")
                         except Exception as e:
-                            st.error(f"Error pre-filling form: {e}")
+                            st.error(f"Error pre-filling form (Playwright runs in local environments): {e}")
 
         with col_act2:
             if st.button("✍️ Regenerate Cover Letter"):
@@ -444,7 +439,7 @@ elif page == "⚙️ Settings":
             profile['summary'] = summary
             profile['skills'] = [s.strip() for s in skills_text.split(",") if s.strip()]
 
-            save_yaml(os.path.join(r"D:\job-agent", "config", "profile.yaml"), profile)
+            save_yaml(os.path.join(os.path.dirname(os.path.abspath(__file__)), "config", "profile.yaml"), profile)
             st.success("Candidate profile updated successfully!")
 
     st.divider()
@@ -469,8 +464,55 @@ elif page == "⚙️ Settings":
             keywords['exclude_keywords'] = [s.strip() for s in exclude_text.split(",") if s.strip()]
             keywords['min_match_score'] = min_score
 
-            save_yaml(os.path.join(r"D:\job-agent", "config", "keywords.yaml"), keywords)
+            save_yaml(os.path.join(os.path.dirname(os.path.abspath(__file__)), "config", "keywords.yaml"), keywords)
             st.success("Job search criteria updated!")
+
+    st.divider()
+
+    # --- AI Engine Configuration Section ---
+    st.subheader("🤖 AI Engine Configuration (Local & Cloud)")
+    st.write("The agent works **100% locally with Ollama** on your laptop. For **Streamlit Cloud deployment**, you can enter a free Groq or Gemini API key below:")
+
+    with st.form("ai_form"):
+        ai_cfg = settings.get('ai', {})
+        col_k1, col_k2 = st.columns(2)
+        with col_k1:
+            groq_key = st.text_input("Groq API Key (Free, fast Llama 3.3)", value=ai_cfg.get('groq_api_key', ''), type="password", help="Get free key at console.groq.com/keys")
+            st.caption("👉 [Get a free Groq API key (Instant)](https://console.groq.com/keys)")
+        with col_k2:
+            gemini_key = st.text_input("Google Gemini API Key (Free tier)", value=ai_cfg.get('gemini_api_key', ''), type="password", help="Get free key at aistudio.google.com/app/apikey")
+            st.caption("👉 [Get a free Gemini API key](https://aistudio.google.com/app/apikey)")
+
+        ollama_model = st.text_input("Local Ollama Model", value=settings.get('ollama', {}).get('model', 'phi3:mini'))
+
+        if st.form_submit_button("💾 Save AI Settings", type="primary"):
+            if 'ai' not in settings:
+                settings['ai'] = {}
+            settings['ai']['groq_api_key'] = groq_key
+            settings['ai']['gemini_api_key'] = gemini_key
+            if 'ollama' not in settings:
+                settings['ollama'] = {}
+            settings['ollama']['model'] = ollama_model
+
+            save_yaml(os.path.join(os.path.dirname(os.path.abspath(__file__)), "config", "settings.yaml"), settings)
+            st.cache_resource.clear()
+            st.success("AI engine settings saved! Reloading...")
+            time.sleep(1)
+            st.rerun()
+
+    # Test AI
+    col_ai1, col_ai2 = st.columns(2)
+    with col_ai1:
+        st.info(f"**Active AI Engine:** {st.session_state.ai_status} ({st.session_state.ai_provider})")
+    with col_ai2:
+        if st.button("🧪 Test Active AI Model"):
+            with st.spinner("Generating AI test response..."):
+                try:
+                    ollama = get_ollama_client()
+                    response = ollama.generate("Say 'Hello! Your AI Job Agent is fully operational.' in under 15 words.")
+                    st.success(f"AI Response: {response}")
+                except Exception as e:
+                    st.error(f"AI Test failed: {e}")
 
     st.divider()
 
@@ -492,7 +534,7 @@ elif page == "⚙️ Settings":
                 settings['twilio']['auth_token'] = token
                 settings['twilio']['from_number'] = from_num
                 settings['twilio']['to_number'] = to_num
-                save_yaml(os.path.join(r"D:\job-agent", "config", "settings.yaml"), settings)
+                save_yaml(os.path.join(os.path.dirname(os.path.abspath(__file__)), "config", "settings.yaml"), settings)
                 st.success("Twilio settings saved!")
         with col_t2:
             if st.form_submit_button("📩 Send Test SMS"):
@@ -501,22 +543,3 @@ elif page == "⚙️ Settings":
                     st.success("Test notification triggered!")
                 else:
                     st.info("Twilio live credentials not configured. Notification was logged locally.")
-
-    st.divider()
-
-    # --- AI Model Section ---
-    st.subheader("🤖 Local AI Engine (Ollama)")
-    col_ai1, col_ai2 = st.columns(2)
-    with col_ai1:
-        st.write(f"**Connection:** {st.session_state.ollama_status}")
-        st.write(f"**Loaded Model:** `{model_name}`")
-        st.write("**Host:** `http://localhost:11434`")
-    with col_ai2:
-        if st.button("🧪 Test Local AI Model", type="primary"):
-            with st.spinner("Testing local model response..."):
-                try:
-                    ollama = get_ollama_client()
-                    response = ollama.generate("Say 'Hello! Your Local AI Job Agent is fully operational.'")
-                    st.success(f"AI Response: {response}")
-                except Exception as e:
-                    st.error(f"AI Test failed: {e}")
