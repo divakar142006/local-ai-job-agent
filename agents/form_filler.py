@@ -21,10 +21,11 @@ logger = logging.getLogger(__name__)
 
 class FormFiller:
     """
-    Autonomous Form Filler & Application Submitter:
-    - Navigates cleanly to any job URL without redirect loops.
-    - Handles LinkedIn Easy Apply and follows external employer career portals (Greenhouse, Lever, Workday).
-    - Fills Kantubothu Divakara Rao's details, attaches official resume.pdf, and submits.
+    Autonomous Form Filler & Multi-Platform Application Submitter:
+    - LinkedIn Easy Apply multi-step auto-apply.
+    - External Career Portal automated login (Workday, Greenhouse, Lever, Oracle Cloud, SmartRecruiters).
+    - Auto-fills education, projects, skills from Kantubothu Divakara Rao's resume.
+    - Uploads official resume.pdf and submits.
     """
 
     FIELD_SELECTORS = {
@@ -70,7 +71,7 @@ class FormFiller:
     def auto_apply(self, url: str, cover_letter: Optional[str] = None, headless: bool = False) -> Dict[str, Any]:
         """
         AUTONOMOUS APPLY:
-        Navigates to job posting, clicks Apply / Easy Apply, fills candidate details,
+        Navigates to job posting, handles logins, fills candidate details,
         attaches resume.pdf, and submits application.
         """
         if not sync_playwright:
@@ -134,8 +135,38 @@ class FormFiller:
                         except Exception:
                             pass
 
-            # 2. Standard Career Portal Application Form (Greenhouse / Lever / Workday / Custom)
-            fields_filled = []
+            # 2. Automated External Portal Handling (Workday, Greenhouse, Lever, Oracle Cloud)
+            return self._handle_external_portal_application(page, context, cover_letter)
+
+        except Exception as e:
+            logger.error(f"Auto-apply error: {e}")
+            return {'status': 'error', 'message': str(e)}
+        finally:
+            if browser_inst:
+                try:
+                    time.sleep(3)
+                    browser_inst.close()
+                except Exception:
+                    pass
+            if pw_inst:
+                try:
+                    pw_inst.stop()
+                except Exception:
+                    pass
+
+    def _handle_external_portal_application(self, page: Page, context: Any, cover_letter: Optional[str] = None) -> Dict[str, Any]:
+        """Handles multi-step external portal applications and automated login."""
+        settings = load_settings()
+        fields_filled = []
+
+        # Check for portal sign-in prompt
+        self._try_portal_login(page, settings)
+
+        # Multi-step portal completion loop
+        for step in range(8):
+            time.sleep(2)
+
+            # A. Fill profile data
             profile_data = {
                 'first_name': self.profile.get('first_name', 'Divakara Rao'),
                 'last_name': self.profile.get('last_name', 'Kantubothu'),
@@ -150,42 +181,76 @@ class FormFiller:
 
             for field_type, val in profile_data.items():
                 if val and self._find_and_fill_field(page, field_type, val):
-                    fields_filled.append(field_type)
+                    if field_type not in fields_filled:
+                        fields_filled.append(field_type)
 
-            # Upload Official Resume PDF
+            # B. Upload resume.pdf
             resume_file = self.get_resume_path()
-            if resume_file and self._upload_resume(page, resume_file):
-                fields_filled.append('resume.pdf')
+            if resume_file and 'resume.pdf' not in fields_filled:
+                if self._upload_resume(page, resume_file):
+                    fields_filled.append('resume.pdf')
 
-            # Attach Cover Letter
-            if cover_letter and self._fill_cover_letter(page, cover_letter):
-                fields_filled.append('cover_letter')
+            # C. Fill cover letter
+            if cover_letter and 'cover_letter' not in fields_filled:
+                if self._fill_cover_letter(page, cover_letter):
+                    fields_filled.append('cover_letter')
 
+            # D. Answer screening questions & checkboxes
+            self._answer_step_questions(page)
             self._handle_standard_checkboxes(page)
-            submit_success = self._click_submit_button(page)
-            time.sleep(3)
 
-            return {
-                'status': 'submitted' if submit_success else 'filled',
-                'fields_filled': fields_filled,
-                'message': '✅ Application successfully submitted with official resume attached!' if submit_success else 'Form filled with candidate details.'
-            }
+            # E. Check for Submit button
+            submit_btn = page.locator('button[type="submit"]:has-text("Submit"), button:has-text("Submit Application"), button:has-text("Submit application"), input[type="submit"][value*="Submit" i]').first
+            if submit_btn.is_visible(timeout=1000):
+                logger.info("Found Submit Application button on employer portal! Submitting...")
+                submit_btn.click()
+                time.sleep(4)
+                
+                # Check for confirmation keywords
+                page_text = page.locator('body').inner_text().lower() if page.locator('body').count() > 0 else ""
+                if any(w in page_text for w in ["thank you", "received", "submitted successfully", "application complete"]):
+                    return {
+                        'status': 'submitted',
+                        'fields_filled': fields_filled,
+                        'message': '🎉 Application successfully submitted to employer career portal!'
+                    }
+                return {'status': 'submitted', 'fields_filled': fields_filled, 'message': '✅ Application submitted to career portal.'}
 
-        except Exception as e:
-            logger.error(f"Auto-apply error: {e}")
-            return {'status': 'error', 'message': str(e)}
-        finally:
-            if browser_inst:
-                try:
-                    time.sleep(2)
-                    browser_inst.close()
-                except Exception:
-                    pass
-            if pw_inst:
-                try:
-                    pw_inst.stop()
-                except Exception:
-                    pass
+            # F. Step forward (Next / Continue / Save & Continue)
+            next_btn = page.locator('button:has-text("Next"), button:has-text("Save and Continue"), button:has-text("Continue"), button:has-text("Review")').first
+            if next_btn.is_visible(timeout=1000) and next_btn.is_enabled():
+                next_btn.click()
+                continue
+            else:
+                break
+
+        return {
+            'status': 'filled',
+            'fields_filled': fields_filled,
+            'message': 'Form pre-filled with candidate details and official resume.'
+        }
+
+    def _try_portal_login(self, page: Page, settings: Dict[str, Any]):
+        """Attempts to log in to external portal if credentials exist."""
+        pwd = settings.get('portal_password') or self.profile.get('portal_password')
+        email = self.profile.get('email', 'divakantubothu@gmail.com')
+
+        if not pwd:
+            return
+
+        try:
+            pwd_input = page.locator('input[type="password"]').first
+            email_input = page.locator('input[type="email"], input[name*="user"], input[name*="email"]').first
+
+            if pwd_input.is_visible(timeout=1500) and email_input.is_visible(timeout=1500):
+                email_input.fill(email)
+                pwd_input.fill(str(pwd))
+                sign_in_btn = page.locator('button[type="submit"], button:has-text("Sign In"), button:has-text("Log In")').first
+                if sign_in_btn.is_visible(timeout=1000):
+                    sign_in_btn.click()
+                    time.sleep(3)
+        except Exception:
+            pass
 
     def _handle_linkedin_easy_apply(self, page: Page, cover_letter: Optional[str] = None) -> Dict[str, Any]:
         """Navigates LinkedIn Easy Apply multi-step modal until submission is verified."""
@@ -195,26 +260,21 @@ class FormFiller:
         for step in range(max_steps):
             time.sleep(2)
 
-            # Step A: Fill visible inputs on current step
             self._fill_visible_inputs(page)
 
-            # Step B: Attach resume if file input is on this step
             resume_file = self.get_resume_path()
             if resume_file and not resume_attached:
                 if self._upload_resume(page, resume_file):
                     resume_attached = True
 
-            # Step C: Answer screening questions
             self._answer_step_questions(page)
 
-            # Step D: Check for Submit button
             submit_btn = page.locator('button[aria-label="Submit application"], button:has-text("Submit application"), button:has-text("Submit")').first
             if submit_btn.is_visible(timeout=1000):
                 logger.info("Found Submit Application button! Clicking submit...")
                 submit_btn.click()
                 time.sleep(4)
                 
-                # Check for LinkedIn confirmation banner
                 confirmation = page.locator('.artdeco-modal__header:has-text("Application sent"), h3:has-text("Application sent"), p:has-text("Your application was sent to")').first
                 if confirmation.is_visible(timeout=4000):
                     return {
@@ -223,13 +283,11 @@ class FormFiller:
                     }
                 return {'status': 'submitted', 'message': '✅ LinkedIn Easy Apply submitted successfully!'}
 
-            # Step E: Check for "Review" button
             review_btn = page.locator('button[aria-label="Review your application"], button:has-text("Review")').first
             if review_btn.is_visible(timeout=1000):
                 review_btn.click()
                 continue
 
-            # Step F: Check for "Next" button
             next_btn = page.locator('button[aria-label="Continue to next step"], button:has-text("Next")').first
             if next_btn.is_visible(timeout=1000):
                 next_btn.click()
@@ -253,7 +311,7 @@ class FormFiller:
     def _answer_step_questions(self, page: Page):
         """Answers screening questions with AI."""
         try:
-            questions = page.locator('.jobs-easy-apply-form-section__grouping, .fb-dash-form-element').all()
+            questions = page.locator('.jobs-easy-apply-form-section__grouping, .fb-dash-form-element, div[data-automation-id*="question"]').all()
             for q_el in questions[:6]:
                 text = q_el.inner_text().strip()
                 if "experience" in text.lower() or "years" in text.lower():
@@ -328,26 +386,6 @@ class FormFiller:
                     cb.check()
         except Exception:
             pass
-
-    def _click_submit_button(self, page: Page) -> bool:
-        """Finds and clicks the primary submit / apply button."""
-        submit_selectors = [
-            'button[type="submit"]',
-            'input[type="submit"]',
-            'button:has-text("Submit Application")',
-            'button:has-text("Submit")',
-            'button:has-text("Send Application")',
-            'button:has-text("Apply Now")'
-        ]
-        for sel in submit_selectors:
-            try:
-                btn = page.locator(sel).first
-                if btn.is_visible(timeout=1000) and btn.is_enabled():
-                    btn.click()
-                    return True
-            except Exception:
-                continue
-        return False
 
     def open_and_prefill(self, url: str, cover_letter: Optional[str] = None) -> Dict[str, Any]:
         """Pre-fills application."""

@@ -603,7 +603,21 @@ elif page == "⚙️ Settings":
             profile['linkedin_cookie'] = li_cookie.strip()
             save_yaml(os.path.join(get_project_root(), "config", "settings.yaml"), settings)
             save_yaml(os.path.join(get_project_root(), "config", "profile.yaml"), profile)
-            st.success("✅ LinkedIn authentication cookie saved! Your AI agent is now directly connected to your LinkedIn account.")
+    st.divider()
+
+    # --- External Career Portals Login Vault ---
+    st.subheader("🔐 External Career Portals & Account Vault")
+    st.write("Save your login password for company career portals (Workday, Oracle Cloud, Taleo, Greenhouse) so the agent can log in and submit applications automatically:")
+    with st.form("portal_vault_form"):
+        portal_email = st.text_input("Portal Login Email", value=profile.get('email', 'divakantubothu@gmail.com'), disabled=True)
+        portal_pwd = st.text_input("Portal Password", value=settings.get('portal_password', ''), type="password", help="The standard password you use for career sites (Workday/Oracle/Greenhouse)")
+
+        if st.form_submit_button("💾 Save Portal Credentials", type="primary"):
+            settings['portal_password'] = portal_pwd.strip()
+            profile['portal_password'] = portal_pwd.strip()
+            save_yaml(os.path.join(get_project_root(), "config", "settings.yaml"), settings)
+            save_yaml(os.path.join(get_project_root(), "config", "profile.yaml"), profile)
+            st.success("✅ Portal credentials saved! The agent will use these to sign in and submit on external career portals.")
             time.sleep(1)
             st.rerun()
 
