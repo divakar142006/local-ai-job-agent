@@ -582,7 +582,28 @@ elif page == "⚙️ Settings":
 
             st.session_state["user_keywords"] = keywords
             save_yaml(os.path.join(get_project_root(), "config", "keywords.yaml"), keywords)
-            st.success("Job search criteria updated!")
+    st.divider()
+
+    # --- LinkedIn Account Authentication ---
+    st.subheader("🔑 LinkedIn Account Authentication")
+    st.write("Connect your existing logged-in LinkedIn account so the AI agent can submit real **Easy Apply** applications without manual logins:")
+    with st.form("linkedin_auth_form"):
+        li_cookie = st.text_input(
+            "LinkedIn 'li_at' Session Cookie",
+            value=settings.get('linkedin_cookie', ''),
+            type="password",
+            help="To get this: In Chrome on linkedin.com, press F12 -> Application -> Cookies -> Copy 'li_at' value."
+        )
+        st.caption("💡 **How to copy your `li_at` cookie in 15 seconds:** Open `linkedin.com` in Chrome -> Press `F12` -> Click `Application` tab -> Click `Cookies` -> Copy `li_at` -> Paste here.")
+
+        if st.form_submit_button("💾 Save LinkedIn Cookie", type="primary"):
+            settings['linkedin_cookie'] = li_cookie.strip()
+            profile['linkedin_cookie'] = li_cookie.strip()
+            save_yaml(os.path.join(get_project_root(), "config", "settings.yaml"), settings)
+            save_yaml(os.path.join(get_project_root(), "config", "profile.yaml"), profile)
+            st.success("✅ LinkedIn authentication cookie saved! Your AI agent is now directly connected to your LinkedIn account.")
+            time.sleep(1)
+            st.rerun()
 
     st.divider()
 

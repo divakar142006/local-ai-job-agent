@@ -138,6 +138,23 @@ class FormFiller:
                     )
                 page = context.new_page()
 
+            # Inject LinkedIn session cookie if configured
+            settings = load_settings()
+            li_at = settings.get('linkedin_cookie') or self.profile.get('linkedin_cookie')
+            if li_at:
+                try:
+                    context.add_cookies([{
+                        'name': 'li_at',
+                        'value': str(li_at).strip(),
+                        'domain': '.linkedin.com',
+                        'path': '/',
+                        'httpOnly': True,
+                        'secure': True
+                    }])
+                    logger.info("Injected li_at authentication cookie into browser session.")
+                except Exception as e:
+                    logger.debug(f"Cookie injection note: {e}")
+
             logger.info(f"Navigating to job URL: {url}")
             page.goto(url, wait_until='domcontentloaded', timeout=45000)
             time.sleep(3)
