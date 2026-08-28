@@ -345,6 +345,37 @@ elif page == "🎯 Auto Search & Apply":
 elif page == "📊 Job Pipeline":
     st.header("📊 Job Application Pipeline")
 
+    # --- Live Real-Time Agent Status Card ---
+    status_file = os.path.join(get_project_root(), "agent_status.json")
+    if os.path.exists(status_file):
+        try:
+            with open(status_file, "r", encoding="utf-8") as f:
+                s_data = json.load(f)
+            col_s1, col_s2, col_s3 = st.columns([1, 2, 1])
+            with col_s1:
+                if s_data.get("is_running"):
+                    st.success("🟢 **24/7 Agent Active**")
+                else:
+                    st.info("⚪ **Agent Standby**")
+            with col_s2:
+                st.write(f"**Current Action:** {s_data.get('current_action', 'Idle')}")
+            with col_s3:
+                st.caption(f"Updated: {s_data.get('last_updated', 'Just now')}")
+        except Exception:
+            pass
+
+    # --- Live Activity Log Stream ---
+    log_file = os.path.join(get_project_root(), "agent_activity.log")
+    if os.path.exists(log_file):
+        with st.expander("📜 Live Autonomous Activity Log (Real-Time Stream)", expanded=False):
+            try:
+                with open(log_file, "r", encoding="utf-8", errors="ignore") as lf:
+                    lines = lf.readlines()[-25:]
+                st.code("".join(lines), language="text")
+            except Exception:
+                pass
+
+    st.divider()
     tabs = st.tabs(["All Jobs", "Matched", "New", "Applied", "Rejected"])
     sort_by = st.radio("Sort by", ["Highest score first", "Newest first"], horizontal=True)
 
