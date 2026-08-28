@@ -520,9 +520,10 @@ elif page == "🚀 Apply":
     proof_file = st.session_state.get('last_submission_screenshot') or os.path.join(get_project_root(), "last_submission_proof.png")
     if os.path.exists(proof_file):
         st.divider()
-        st.subheader("📸 Live Application Submission Proof")
-        st.caption("Verified real-time visual proof of the application page captured during submission:")
-        st.image(proof_file, caption="Latest Application Submission Page Proof", use_container_width=True)
+        try:
+            st.image(proof_file, caption="Latest Application Submission Page Proof")
+        except Exception:
+            pass
 
 # =====================================================================
 # PAGE 5: SETTINGS
