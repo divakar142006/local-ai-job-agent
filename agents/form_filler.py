@@ -425,11 +425,27 @@ class FormFiller:
                 break
 
         confirm_res = self._verify_post_submit_confirmation(page)
+        if confirm_res.get('verified'):
+            return {
+                'status': 'submitted',
+                'fields_filled': fields_filled,
+                'confirmation_signal': confirm_res['signal'],
+                'message': f"🎉 Application successfully submitted! Signal: {confirm_res['signal']}"
+            }
+
+        # If no fields were filled and no submit button clicked, this is a failed attempt
+        if not fields_filled:
+            return {
+                'status': 'failed_no_form',
+                'fields_filled': [],
+                'message': 'Could not detect or fill application form on this portal (login required or unparseable page).'
+            }
+
         return {
-            'status': 'submitted' if confirm_res['verified'] else 'submitted_pending_email',
+            'status': 'submitted_pending_email',
             'fields_filled': fields_filled,
-            'confirmation_signal': confirm_res['signal'],
-            'message': f"Application processed. Signal: {confirm_res['signal']}"
+            'confirmation_signal': confirm_res.get('signal', 'Dispatched'),
+            'message': f"Form fields filled ({', '.join(fields_filled)}). Confirmation pending async email."
         }
 
     def _assert_email_field(self, page: Page, expected_email: str = "divakantubothu@gmail.com") -> bool:

@@ -168,6 +168,13 @@ class AutonomousJobAgent:
                     time.sleep(2)
                     continue
 
+                if status in ['failed_no_form', 'failed_auth_required', 'error']:
+                    logger.warning(f"❌ Application attempt failed for {company}: {msg}")
+                    db_job.status = 'failed'
+                    db_job.save()
+                    time.sleep(2)
+                    continue
+
                 # 4. Email Verification & Tallying (Platform domain + Subject keywords)
                 self.set_status(True, f"Checking confirmation receipt for {company} ({title})...")
                 logger.info(f"📬 Checking Gmail for confirmation receipt from {company} ({title})...")
@@ -177,24 +184,45 @@ class AutonomousJobAgent:
                 if email_confirmed:
                     logger.info(f"🎉 CONFIRMED VIA EMAIL RECEIPT: {email_details}")
                     status_note = f"Applied (Verified by Email: {email_details})"
+                    db_job.status = 'applied'
+                    db_job.save()
+                    Application.create(
+                        job=db_job,
+                        status=status_note,
+                        platform=job_data.get('source', 'Online'),
+                        cover_letter_used=cl_text
+                    )
+                    self.notifier.notify_applied(title, company)
+                    applied_in_cycle += 1
                 elif status == 'submitted':
-                    logger.info(f"✅ CONFIRMED VIA PORTAL DOM: Application submitted to {company}. Confirmation email pending async delivery from ATS.")
+                    logger.info(f"✅ CONFIRMED VIA PORTAL DOM: Application submitted to {company}.")
                     status_note = "Applied (Verified on Portal)"
-                else:
-                    logger.info(f"ℹ️ Application dispatched for {company}. Marked for asynchronous verification (no auto-resubmit).")
+                    db_job.status = 'applied'
+                    db_job.save()
+                    Application.create(
+                        job=db_job,
+                        status=status_note,
+                        platform=job_data.get('source', 'Online'),
+                        cover_letter_used=cl_text
+                    )
+                    self.notifier.notify_applied(title, company)
+                    applied_in_cycle += 1
+                elif apply_res.get('fields_filled'):
+                    logger.info(f"ℹ️ Application dispatched for {company}. Fields filled: {apply_res.get('fields_filled')}")
                     status_note = "Applied (Pending Async Verification)"
-
-                db_job.status = 'applied'
-                db_job.save()
-
-                Application.create(
-                    job=db_job,
-                    status=status_note,
-                    platform=job_data.get('source', 'Online'),
-                    cover_letter_used=cl_text
-                )
-                self.notifier.notify_applied(title, company)
-                applied_in_cycle += 1
+                    db_job.status = 'applied'
+                    db_job.save()
+                    Application.create(
+                        job=db_job,
+                        status=status_note,
+                        platform=job_data.get('source', 'Online'),
+                        cover_letter_used=cl_text
+                    )
+                    self.notifier.notify_applied(title, company)
+                    applied_in_cycle += 1
+                else:
+                    db_job.status = 'failed'
+                    db_job.save()
 
                 time.sleep(5)
 
