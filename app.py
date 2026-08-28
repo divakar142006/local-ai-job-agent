@@ -486,6 +486,8 @@ elif page == "⚙️ Settings":
         ollama_model = st.text_input("Local Ollama Model", value=settings.get('ollama', {}).get('model', 'phi3:mini'))
 
         if st.form_submit_button("💾 Save AI Settings", type="primary"):
+            st.session_state['groq_api_key'] = groq_key
+            st.session_state['gemini_api_key'] = gemini_key
             if 'ai' not in settings:
                 settings['ai'] = {}
             settings['ai']['groq_api_key'] = groq_key
@@ -494,7 +496,10 @@ elif page == "⚙️ Settings":
                 settings['ollama'] = {}
             settings['ollama']['model'] = ollama_model
 
-            save_yaml(os.path.join(os.path.dirname(os.path.abspath(__file__)), "config", "settings.yaml"), settings)
+            try:
+                save_yaml(os.path.join(os.path.dirname(os.path.abspath(__file__)), "config", "settings.yaml"), settings)
+            except Exception:
+                pass
             st.cache_resource.clear()
             st.success("AI engine settings saved! Reloading...")
             time.sleep(1)

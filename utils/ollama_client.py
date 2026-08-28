@@ -28,7 +28,7 @@ class OllamaAI:
         self.groq_api_key = os.environ.get("GROQ_API_KEY", "")
         self.gemini_api_key = os.environ.get("GEMINI_API_KEY", "")
 
-        # Check Streamlit secrets if running inside Streamlit
+        # Check Streamlit secrets or session_state if running inside Streamlit
         try:
             import streamlit as st
             if hasattr(st, "secrets"):
@@ -36,6 +36,11 @@ class OllamaAI:
                     self.groq_api_key = st.secrets["GROQ_API_KEY"]
                 if "GEMINI_API_KEY" in st.secrets:
                     self.gemini_api_key = st.secrets["GEMINI_API_KEY"]
+            if hasattr(st, "session_state"):
+                if st.session_state.get("groq_api_key"):
+                    self.groq_api_key = st.session_state["groq_api_key"]
+                if st.session_state.get("gemini_api_key"):
+                    self.gemini_api_key = st.session_state["gemini_api_key"]
         except Exception:
             pass
 
@@ -111,25 +116,24 @@ class OllamaAI:
 
         # 2. Try Groq Cloud API
         if self.groq_api_key and not self.groq_api_key.startswith("YOUR_"):
-            try:
-                url = "https://api.groq.com/openai/v1/chat/completions"
-                headers = {
-                    "Authorization": f"Bearer {self.groq_api_key}",
-                    "Content-Type": "application/json"
-                }
-                payload = {
-                    "model": "llama-3.3-70b-versatile",
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0.2,
-                    "max_tokens": 500
-                }
-                r = requests.post(url, json=payload, headers=headers, timeout=20)
-                if r.status_code == 200:
-                    return r.json()["choices"][0]["message"]["content"]
-                else:
-                    print(f"Groq API error {r.status_code}: {r.text}")
-            except Exception as e:
-                print(f"Groq exception: {e}")
+            for model_id in ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b", "llama-3.3-70b-versatile"]:
+                try:
+                    url = "https://api.groq.com/openai/v1/chat/completions"
+                    headers = {
+                        "Authorization": f"Bearer {self.groq_api_key}",
+                        "Content-Type": "application/json"
+                    }
+                    payload = {
+                        "model": model_id,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "temperature": 0.2,
+                        "max_tokens": 500
+                    }
+                    r = requests.post(url, json=payload, headers=headers, timeout=20)
+                    if r.status_code == 200:
+                        return r.json()["choices"][0]["message"]["content"]
+                except Exception as e:
+                    print(f"Groq exception with {model_id}: {e}")
 
         # 3. Try Gemini Cloud API
         if self.gemini_api_key and not self.gemini_api_key.startswith("YOUR_"):

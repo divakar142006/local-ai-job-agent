@@ -29,3 +29,10 @@ notifications:
   notify_on_match: true        # Send SMS when a high match score job is found
   notify_on_apply: true        # Send SMS when an application has been submitted
   min_score_to_notify: 70      # Minimum score threshold to trigger SMS alerts
+
+# AI Engine Configuration (Groq Cloud & Local Ollama)
+ai:
+  provider: "auto"
+  groq_api_key: ""
+  gemini_api_key: ""
+
