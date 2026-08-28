@@ -206,8 +206,18 @@ class FormFiller:
 
             # 1. Handle LinkedIn Job Page
             if "linkedin.com" in page.url or "linkedin.com" in target_url:
+                # Check for Login/Sign-up Wall
+                page_text = page.inner_text("body").lower() if page.locator("body").count() > 0 else ""
+                if "join linkedin now" in page_text or "sign in | linkedin" in page.title().lower() or "uas/login" in page.url:
+                    logger.warning(f"❌ Application aborted: Page redirected to LinkedIn guest login/signup barrier: {page.url}")
+                    return {
+                        'status': 'failed_auth_required',
+                        'fields_filled': [],
+                        'message': 'LinkedIn login/signup barrier encountered. Application not submitted.'
+                    }
+
                 # Check for Easy Apply
-                easy_apply_btn = page.locator('button.jobs-apply-button, button:has-text("Easy Apply"), .jobs-apply-button--top-card button').first
+                easy_apply_btn = page.locator('button.jobs-apply-button:has-text("Easy Apply"), button[aria-label*="Easy Apply" i], button:has-text("Easy Apply")').first
                 if easy_apply_btn.is_visible(timeout=3000):
                     logger.info("Found Easy Apply button. Launching modal...")
                     easy_apply_btn.click()
@@ -221,7 +231,7 @@ class FormFiller:
                     return res
 
                 # Check for External Apply
-                apply_btn = page.locator('a.jobs-apply-button, button:has-text("Apply"), a:has-text("Apply"), button.apply-button').first
+                apply_btn = page.locator('a.jobs-apply-button:has-text("Apply"), button.jobs-apply-button:has-text("Apply"), a[href*="/jobs/view/"]:has-text("Apply")').first
                 if apply_btn.is_visible(timeout=3000):
                     logger.info("Found external Apply button. Navigating to ATS portal...")
                     try:
@@ -297,20 +307,29 @@ class FormFiller:
             self._answer_step_questions(page)
 
             # Check for Submit application button
-            submit_btn = page.locator('button[aria-label="Submit application"], button:has-text("Submit application"), button:has-text("Submit")').first
+            submit_btn = page.locator('button[aria-label="Submit application"], .jobs-easy-apply-modal button:has-text("Submit application"), .artdeco-modal button:has-text("Submit application")').first
             if submit_btn.is_visible(timeout=1200) and submit_btn.is_enabled():
                 logger.info("🎉 Found Submit Application button on LinkedIn! Submitting application live...")
                 submit_btn.click()
-                time.sleep(5)
+                time.sleep(4)
                 
-                # Check for "Done" / close confirmation
-                done_btn = page.locator('button:has-text("Done"), button[aria-label="Dismiss"]').first
-                if done_btn.is_visible(timeout=2000):
-                    done_btn.click()
+                # Verify post-submit confirmation banner
+                confirmed = page.locator('div:has-text("Application sent"), .artdeco-modal:has-text("Application sent"), div:has-text("Your application was sent to"), .artdeco-inline-feedback--success').first
+                if confirmed.is_visible(timeout=4000):
+                    logger.info("🎉 LinkedIn Confirmed: 'Application sent' banner verified!")
+                    done_btn = page.locator('button:has-text("Done"), button[aria-label="Dismiss"]').first
+                    if done_btn.is_visible(timeout=1500):
+                        done_btn.click()
+                    return {
+                        'status': 'submitted',
+                        'fields_filled': ['easy_apply_submitted'],
+                        'message': '🎉 LinkedIn Confirmed: Your application was officially submitted to the employer!'
+                    }
 
                 return {
                     'status': 'submitted',
-                    'message': '🎉 LinkedIn Confirmed: Your application was officially submitted to the employer!'
+                    'fields_filled': ['easy_apply_submitted'],
+                    'message': '🎉 Application submit button clicked on LinkedIn.'
                 }
 
             # Review step
@@ -333,7 +352,17 @@ class FormFiller:
                 break
 
         # Final check if modal already submitted
-        return {'status': 'submitted', 'message': 'Application submitted on LinkedIn.'}
+        try:
+            confirmed = page.locator('div:has-text("Application sent"), .artdeco-modal:has-text("Application sent"), .artdeco-inline-feedback--success').first
+            if confirmed.is_visible(timeout=2000):
+                return {'status': 'submitted', 'message': '🎉 Application confirmed sent on LinkedIn!'}
+        except Exception:
+            pass
+
+        return {
+            'status': 'failed_modal_incomplete',
+            'message': 'Could not complete all required screening questions or reach final submit button.'
+        }
 
     def _solve_unfulfilled_step_fields(self, page: Page):
         """Forces positive selection on unfulfilled required radios and dropdowns."""
@@ -359,6 +388,18 @@ class FormFiller:
 
     def _handle_external_portal_application(self, page: Page, context: Any, cover_letter: Optional[str] = None) -> Dict[str, Any]:
         """Handles multi-step external portal applications and clicks final submit."""
+        url = page.url.lower()
+        title = page.title().lower()
+
+        # Reject LinkedIn login/signup walls immediately
+        if any(k in url for k in ["linkedin.com/login", "linkedin.com/signup", "linkedin.com/uas/login", "checkpoint"]) or "join linkedin" in title or "sign in | linkedin" in title:
+            logger.warning(f"❌ Application aborted: Page redirected to LinkedIn login/signup barrier ({url})")
+            return {
+                'status': 'failed_auth_required',
+                'fields_filled': [],
+                'message': 'LinkedIn login/signup barrier encountered. Application not submitted.'
+            }
+
         settings = load_settings()
         fields_filled = []
 
