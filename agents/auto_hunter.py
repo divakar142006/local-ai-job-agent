@@ -70,13 +70,21 @@ Return ONLY valid JSON with keys: 'title', 'skills', 'location'.
         jobs = []
         kw_encoded = urllib.parse.quote(keyword)
         loc_encoded = urllib.parse.quote(location)
-        url = f"https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords={kw_encoded}&location={loc_encoded}&start=0"
+        # f_AL=true filters exclusively for Easy Apply jobs that submit automatically on LinkedIn
+        url = f"https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords={kw_encoded}&location={loc_encoded}&f_AL=true&start=0"
         
         try:
             r = self.session.get(url, timeout=12)
             if r.status_code == 200:
                 soup = BeautifulSoup(r.text, 'html.parser')
                 cards = soup.find_all('li')
+                if not cards:
+                    # Fallback to broader search if Easy Apply filter has low volume
+                    fallback_url = f"https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords={kw_encoded}&location={loc_encoded}&start=0"
+                    r_fb = self.session.get(fallback_url, timeout=12)
+                    if r_fb.status_code == 200:
+                        soup = BeautifulSoup(r_fb.text, 'html.parser')
+                        cards = soup.find_all('li')
                 for card in cards[:limit]:
                     try:
                         title_el = card.find('h3', class_='base-search-card__title')
