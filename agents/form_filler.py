@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 class FormFiller:
     """
     Autonomous Form Filler & Application Submitter:
-    - Uses Persistent Browser Profile (`browser_profile`) so you stay logged into LinkedIn & Naukri permanently.
+    - Uses Playwright `storage_state` (`linkedin_session.json`) for seamless, lock-free session persistence.
     - Automates real LinkedIn Easy Apply wizard step-by-step.
     - Verifies LinkedIn's "Application Sent" confirmation.
     """
@@ -42,11 +42,9 @@ class FormFiller:
         self.profile = load_profile()
         self.ai = OllamaAI()
 
-    def get_browser_profile_dir(self) -> str:
-        """Returns directory path where persistent cookies/sessions are stored."""
-        p = os.path.join(get_project_root(), "browser_profile")
-        os.makedirs(p, exist_ok=True)
-        return p
+    def get_session_path(self) -> str:
+        """Returns path to the saved LinkedIn session storage state JSON."""
+        return os.path.join(get_project_root(), "linkedin_session.json")
 
     def get_resume_path(self) -> Optional[str]:
         """Resolves the absolute path to Kantubothu Divakara Rao's official resume PDF."""
@@ -63,53 +61,92 @@ class FormFiller:
 
     def open_linkedin_login_session(self) -> Dict[str, Any]:
         """
-        Opens a visible browser with the persistent profile so the user can log into LinkedIn / Naukri ONCE.
-        All login session cookies will be saved permanently.
+        Opens a visible browser for LinkedIn login, saves session cookies to `linkedin_session.json`.
         """
         if not sync_playwright:
             return {'status': 'error', 'message': 'Playwright is only available locally on your laptop.'}
 
         try:
             pw = sync_playwright().start()
-            user_data_dir = self.get_browser_profile_dir()
-            context = pw.chromium.launch_persistent_context(
-                user_data_dir=user_data_dir,
+            browser = pw.chromium.launch(
                 headless=False,
-                args=['--start-maximized', '--disable-blink-features=AutomationControlled'],
+                args=['--start-maximized', '--disable-blink-features=AutomationControlled']
+            )
+            context = browser.new_context(
+                viewport=None,
                 user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             )
             page = context.new_page()
             page.goto('https://www.linkedin.com/login', timeout=60000)
-            return {'status': 'opened', 'message': 'Browser opened! Please log in to your LinkedIn account in the opened window. Your session will be saved permanently.'}
+
+            # Wait for user to log in (wait up to 90 seconds or until URL contains 'feed')
+            session_saved = False
+            for _ in range(30):
+                time.sleep(3)
+                curr_url = page.url
+                if 'feed' in curr_url or 'check' in curr_url or 'mynetwork' in curr_url:
+                    context.storage_state(path=self.get_session_path())
+                    session_saved = True
+                    break
+
+            if not session_saved:
+                # Save whatever state exists upon closing
+                try:
+                    context.storage_state(path=self.get_session_path())
+                except Exception:
+                    pass
+
+            browser.close()
+            pw.stop()
+
+            return {
+                'status': 'opened',
+                'message': '✅ LinkedIn login window launched! Log in and your session is automatically saved to linkedin_session.json.'
+            }
         except Exception as e:
             return {'status': 'error', 'message': str(e)}
 
     def auto_apply(self, url: str, cover_letter: Optional[str] = None, headless: bool = False) -> Dict[str, Any]:
         """
         AUTONOMOUS APPLY:
-        Launches browser with saved LinkedIn session, clicks Easy Apply,
+        Launches browser with saved LinkedIn storage_state, clicks Easy Apply,
         fills details, uploads resume, answers questions, and submits.
         """
         if not sync_playwright:
             return {'status': 'error', 'message': 'Playwright browser automation runs locally on your laptop (http://localhost:8501).'}
 
         self.profile = load_profile()
-        context = None
+        browser_inst = None
         pw_inst = None
 
         try:
             pw_inst = sync_playwright().start()
-            user_data_dir = self.get_browser_profile_dir()
-            
-            # Persistent context keeps LinkedIn/Naukri login session alive
-            context = pw_inst.chromium.launch_persistent_context(
-                user_data_dir=user_data_dir,
+            browser_inst = pw_inst.chromium.launch(
                 headless=headless,
-                args=['--start-maximized', '--disable-blink-features=AutomationControlled'],
-                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                args=['--start-maximized', '--disable-blink-features=AutomationControlled']
             )
-            page = context.new_page()
 
+            # Load saved LinkedIn session if available
+            session_file = self.get_session_path()
+            if os.path.exists(session_file):
+                try:
+                    context = browser_inst.new_context(
+                        storage_state=session_file,
+                        viewport=None,
+                        user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                    )
+                except Exception:
+                    context = browser_inst.new_context(
+                        viewport=None,
+                        user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                    )
+            else:
+                context = browser_inst.new_context(
+                    viewport=None,
+                    user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                )
+
+            page = context.new_page()
             logger.info(f"Navigating to job URL: {url}")
             page.goto(url, wait_until='domcontentloaded', timeout=45000)
             time.sleep(3)
@@ -125,11 +162,10 @@ class FormFiller:
                     res = self._handle_linkedin_easy_apply(page, cover_letter)
                     return res
                 else:
-                    # If not logged in, prompt user to log in once
                     if page.locator('a:has-text("Sign in"), button:has-text("Sign in")').first.is_visible(timeout=2000):
                         return {
                             'status': 'needs_login',
-                            'message': '⚠️ LinkedIn requires you to be logged in. Click "🔑 Connect & Login to LinkedIn" in Settings to save your session once!'
+                            'message': '⚠️ LinkedIn session expired or not logged in. Click "🌐 Open Browser to Log In to LinkedIn" to refresh your session!'
                         }
 
             # 2. Standard Career Portal Application (Greenhouse / Lever / Custom)
@@ -173,10 +209,10 @@ class FormFiller:
             logger.error(f"Auto-apply error: {e}")
             return {'status': 'error', 'message': str(e)}
         finally:
-            if context:
+            if browser_inst:
                 try:
-                    time.sleep(3)
-                    context.close()
+                    time.sleep(2)
+                    browser_inst.close()
                 except Exception:
                     pass
             if pw_inst:
