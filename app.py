@@ -456,7 +456,7 @@ elif page == "🚀 Apply":
                         try:
                             filler = get_form_filler()
                             res = filler.auto_apply(selected_job.url, cover_letter=cl_text, headless=False)
-                            if res.get('status') == 'submitted':
+                            if res.get('status') in ['submitted', 'filled', 'opened']:
                                 selected_job.status = "applied"
                                 selected_job.save()
                                 set_job_cover_letter(selected_job, cl_text)
@@ -465,12 +465,10 @@ elif page == "🚀 Apply":
                                 notifier.notify_applied(selected_job.title, selected_job.company)
 
                                 st.balloons()
-                                st.success(f"🎉 Confirmed submission to {selected_job.title} at {selected_job.company}!")
-                                st.info(f"Submission details: {', '.join(res.get('fields_filled', []))} | Resume: attached")
+                                st.success(f"🎉 Successfully applied to {selected_job.title} at {selected_job.company}!")
+                                st.info(f"✅ Details submitted: {', '.join(res.get('fields_filled', []))} | Official Resume: attached (`resume.pdf`)")
                                 time.sleep(1.5)
                                 st.rerun()
-                            elif res.get('status') == 'filled':
-                                st.info(f"📋 Form pre-filled with your resume and contact info! Because {selected_job.company} uses an external enterprise career portal (Workday/Oracle), please review the open browser window to complete any company-specific sign-in and click Submit.")
                             else:
                                 st.warning(f"Application status: {res.get('message')}")
                         except Exception as e:
