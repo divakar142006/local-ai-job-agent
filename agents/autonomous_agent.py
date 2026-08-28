@@ -155,6 +155,19 @@ class AutonomousJobAgent:
                 msg = apply_res.get('message', '')
                 logger.info(f"Submission attempt result: {status} - {msg}")
 
+                if status == 'flagged_for_manual_review':
+                    logger.warning(f"⚠️ Job at {company} flagged for manual review (Security Challenge/CAPTCHA). Skipped.")
+                    db_job.status = 'flagged_review'
+                    db_job.save()
+                    Application.create(
+                        job=db_job,
+                        status='Flagged for Review (CAPTCHA/Challenge)',
+                        platform=job_data.get('source', 'Online'),
+                        cover_letter_used=cl_text
+                    )
+                    time.sleep(2)
+                    continue
+
                 # 4. Email Verification & Tallying (Platform domain + Subject keywords)
                 self.set_status(True, f"Checking confirmation receipt for {company} ({title})...")
                 logger.info(f"📬 Checking Gmail for confirmation receipt from {company} ({title})...")

@@ -195,8 +195,14 @@ class FormFiller:
                     except Exception:
                         pass
 
-            time.sleep(3)
-            self._check_and_bypass_cloudflare(page)
+            time.sleep(2)
+            if self._detect_security_challenge(page):
+                logger.warning(f"⚠️ Security Challenge / CAPTCHA detected on {target_url}. Auto-skipping to Manual Review Queue.")
+                return {
+                    'status': 'flagged_for_manual_review',
+                    'fields_filled': [],
+                    'message': 'Security Challenge / CAPTCHA detected. Skipped to prevent blocking and queued for manual review.'
+                }
 
             # 1. Handle LinkedIn Job Page
             if "linkedin.com" in page.url or "linkedin.com" in target_url:
@@ -256,25 +262,19 @@ class FormFiller:
                 except Exception:
                     pass
 
-    def _check_and_bypass_cloudflare(self, page: Page) -> bool:
-        """Detects and clicks Cloudflare Turnstile verification checkboxes."""
+    def _detect_security_challenge(self, page: Page) -> bool:
+        """Detects if page is blocked by Cloudflare, reCAPTCHA, hCaptcha, or bot wall."""
         try:
-            if "just a moment" in page.title().lower() or "challenge" in page.url:
-                logger.info("Cloudflare Turnstile challenge detected. Auto-clicking verification...")
-                for frame in page.frames:
-                    try:
-                        cb = frame.locator('input[type="checkbox"], .ctp-checkbox-label, #challenge-stage input').first
-                        if cb.is_visible(timeout=1500):
-                            cb.click()
-                            time.sleep(3)
-                            return True
-                    except Exception:
-                        pass
-                main_cb = page.locator('#challenge-stage input, input[type="checkbox"]').first
-                if main_cb.is_visible(timeout=1500):
-                    main_cb.click()
-                    time.sleep(3)
-                    return True
+            title = page.title().lower()
+            url = page.url.lower()
+            if any(k in title for k in ["just a moment", "security check", "verify you are human", "captcha"]):
+                return True
+            if any(k in url for k in ["challenge", "captcha", "/waf/", "checkpoint"]):
+                return True
+            
+            captcha_loc = page.locator('iframe[src*="recaptcha" i], iframe[src*="hcaptcha" i], iframe[src*="cloudflare" i], #challenge-stage, .g-recaptcha, .h-captcha').first
+            if captcha_loc.is_visible(timeout=1000):
+                return True
         except Exception:
             pass
         return False
