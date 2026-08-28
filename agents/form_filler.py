@@ -354,12 +354,12 @@ class FormFiller:
             # Auto-handle OTP verification if prompted
             self._handle_email_otp_verification(page, settings)
 
-            # E. Check for Submit button
-            submit_btn = page.locator('button[data-automation-id="submit-button"], button[type="submit"]:has-text("Submit"), button:has-text("Submit Application"), button:has-text("Submit application"), input[type="submit"][value*="Submit" i]').first
+            # E. Check for Submit / Apply button
+            submit_btn = page.locator('button[type="submit"], button:has-text("Apply"), button:has-text("Submit"), button:has-text("Submit Application"), button:has-text("Send Application"), input[type="submit"], button[data-automation-id="submit-button"]').first
             if submit_btn.is_visible(timeout=1000):
-                logger.info("Found Submit Application button! Clicking submit live on website...")
+                logger.info("Found Submit / Apply button! Clicking submit live on website...")
                 submit_btn.click()
-                time.sleep(4)
+                time.sleep(5)
                 
                 return {
                     'status': 'submitted',
