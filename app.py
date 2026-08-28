@@ -438,10 +438,37 @@ elif page == "🚀 Apply":
         current_cl = get_job_cover_letter(selected_job)
         cl_text = st.text_area("Cover Letter for this Application", value=current_cl, height=250)
 
-        col_act1, col_act2, col_act3 = st.columns(3)
+        col_act1, col_act2, col_act3, col_act4 = st.columns(4)
 
         with col_act1:
-            if st.button("🌐 Open & Pre-fill Form with Playwright", type="primary"):
+            if st.button("⚡ Autonomous Auto-Apply (Auto-Submit)", type="primary"):
+                if not selected_job.url or not selected_job.url.startswith("http"):
+                    st.error("Please provide a valid application URL for this job.")
+                else:
+                    with st.spinner("🤖 Agent is applying, uploading resume.pdf, and submitting..."):
+                        try:
+                            filler = get_form_filler()
+                            res = filler.auto_apply(selected_job.url, cover_letter=cl_text, headless=False)
+                            if res.get('status') in ['submitted', 'opened', 'filled']:
+                                selected_job.status = "applied"
+                                selected_job.save()
+                                set_job_cover_letter(selected_job, cl_text)
+
+                                notifier = get_notifier()
+                                notifier.notify_applied(selected_job.title, selected_job.company)
+
+                                st.balloons()
+                                st.success(f"🎉 Successfully applied to {selected_job.title} at {selected_job.company}!")
+                                st.info(f"Details submitted: {', '.join(res.get('fields_filled', []))} | Resume: attached")
+                                time.sleep(1.5)
+                                st.rerun()
+                            else:
+                                st.warning(f"Application status: {res.get('message')}")
+                        except Exception as e:
+                            st.error(f"Auto-apply error: {e}")
+
+        with col_act2:
+            if st.button("🌐 Open & Pre-fill (Manual Submit)"):
                 if not selected_job.url or not selected_job.url.startswith("http"):
                     st.error("Please provide a valid application URL for this job.")
                 else:
@@ -449,15 +476,11 @@ elif page == "🚀 Apply":
                         try:
                             filler = get_form_filler()
                             res = filler.open_and_prefill(selected_job.url, cover_letter=cl_text)
-                            if res.get('status') == 'opened':
-                                st.success("✅ Browser opened! Review the form in your browser window and click Submit.")
-                                st.info(f"Fields automatically filled: {', '.join(res.get('fields_filled', []))}")
-                            else:
-                                st.warning(f"Form status: {res.get('message')}")
+                            st.success("✅ Browser opened! Review the form in your browser window.")
                         except Exception as e:
-                            st.error(f"Error pre-filling form (Playwright runs in local environments): {e}")
+                            st.error(f"Error: {e}")
 
-        with col_act2:
+        with col_act3:
             if st.button("✍️ Regenerate Cover Letter"):
                 with st.spinner("Generating fresh cover letter..."):
                     cl_gen = get_cover_letter_generator()
@@ -469,8 +492,8 @@ elif page == "🚀 Apply":
                     set_job_cover_letter(selected_job, new_cl)
                     st.rerun()
 
-        with col_act3:
-            if st.button("🎉 Mark as Successfully Applied"):
+        with col_act4:
+            if st.button("🎉 Mark as Applied"):
                 selected_job.status = "applied"
                 selected_job.save()
                 set_job_cover_letter(selected_job, cl_text)

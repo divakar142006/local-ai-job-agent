@@ -218,13 +218,15 @@ Return ONLY valid JSON with keys: 'title', 'skills', 'location'.
                 except Exception as e:
                     logger.error(f"Error saving job to database: {e}")
 
-                # Auto-fill application in browser if requested
+                # Auto-fill & submit application in browser if requested
                 if auto_launch_browser and filler and job_data.get('url'):
                     try:
-                        yield {"step": "applying", "job": job_data, "message": f"🌐 Pre-filling application form for {job_data['title']}..."}
-                        filler.open_and_prefill(job_data['url'], cover_letter=cl_text)
+                        yield {"step": "applying", "job": job_data, "message": f"🌐 Submitting application automatically for {job_data['title']} at {job_data['company']} with resume.pdf..."}
+                        res = filler.auto_apply(job_data['url'], cover_letter=cl_text, headless=False)
+                        if res.get('status') == 'submitted':
+                            yield {"step": "submitted", "job": job_data, "message": f"🚀 Application submitted to {job_data['company']}!"}
                     except Exception as e:
-                        logger.error(f"Auto-fill error: {e}")
+                        logger.error(f"Auto-apply error: {e}")
 
                 # Send Notification
                 try:
