@@ -177,6 +177,8 @@ class FormFiller:
             try:
                 page.goto(target_url, wait_until='domcontentloaded', timeout=35000)
             except Exception:
+                pass
+
             time.sleep(3)
             # Auto-bypass Cloudflare Turnstile challenge if present
             self._check_and_bypass_cloudflare(page)
