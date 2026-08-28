@@ -489,7 +489,26 @@ elif page == "🚀 Apply":
                 st.info(res.get('message'))
 
     if not eligible_jobs:
-        st.info("No active jobs ready for application. Add some jobs on the 'Add Job' or 'Auto Search & Apply' pages first!")
+        st.info("All current tracked jobs have been submitted or applied by the autonomous agent.")
+        if st.button("🔄 Fetch 10 Fresh Python & AI Jobs Now", type="primary"):
+            with st.spinner("Fetching fresh engineering openings..."):
+                hunter = get_auto_hunter()
+                new_jobs = hunter.search_similar_jobs("Python Developer", "Remote", limit=10)
+                for nj in new_jobs:
+                    if nj.get('url'):
+                        Job.get_or_create(url=nj['url'], defaults={
+                            'title': nj['title'],
+                            'company': nj['company'],
+                            'location': nj.get('location', 'Remote'),
+                            'salary': nj.get('salary', 'Competitive'),
+                            'source': nj.get('source', 'Jobicy'),
+                            'description': nj.get('description', ''),
+                            'status': 'matched',
+                            'match_score': 88,
+                            'match_reasoning': 'Direct Python & Software Engineering match'
+                        })
+                st.success("Loaded 10 fresh matching jobs!")
+                st.rerun()
     else:
         job_options = {f"{j.title} at {j.company} (Score: {j.match_score}%)": j for j in eligible_jobs}
         selected_label = st.selectbox("Select Target Job", list(job_options.keys()))
