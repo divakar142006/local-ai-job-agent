@@ -1,8 +1,14 @@
 exclude_keywords:
-- fresher
-- entry-level
-- zero experience
-min_match_score: 71
+- Marketing
+- Sales
+- Graphic Design
+- Content Reviewer
+- Product Manager
+- HR
+- Recruiter
+- Customer Support
+- Call Center
+min_match_score: 70
 preferred_job_types:
 - Full-time
 - Internship
@@ -24,7 +30,7 @@ target_titles:
 - AI Engineer
 - Software Engineer
 - Backend Developer
+- Full Stack Developer
 - Python Intern
 - Data Science Intern
 - Junior Software Engineer
-- Graduate Engineer Trainee

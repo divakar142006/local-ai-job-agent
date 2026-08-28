@@ -417,7 +417,16 @@ elif page == "🚀 Apply":
     st.header("🚀 Semi-Automated Application")
     st.write("Select a job to pre-fill your information in a visible browser window. You can review the filled form and click submit.")
 
-    eligible_jobs = list(Job.select().where(Job.status != 'applied').order_by(Job.match_score.desc()))
+    kw_data = load_keywords()
+    excludes = [e.lower() for e in kw_data.get('exclude_keywords', [])]
+    tech_indicators = ['developer', 'engineer', 'analyst', 'software', 'python', 'ai', 'data', 'intern', 'backend', 'full stack', 'database', 'programmer']
+    
+    all_unapplied = list(Job.select().where(Job.status != 'applied').order_by(Job.match_score.desc()))
+    eligible_jobs = [
+        j for j in all_unapplied
+        if not any(ex in (j.title or '').lower() for ex in excludes)
+        and any(ti in (j.title or '').lower() for ti in tech_indicators)
+    ]
     
     with st.expander("🔑 LinkedIn / Naukri Account Login Setup (Important)", expanded=False):
         st.write("To allow the agent to submit LinkedIn Easy Apply jobs under your official profile so you receive LinkedIn confirmation emails, log in once below. Your session cookies will be saved permanently.")

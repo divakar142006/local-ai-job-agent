@@ -135,8 +135,32 @@ Return ONLY valid JSON with keys: 'title', 'skills', 'location'.
             logger.error(f"Remotive search error: {e}")
         return jobs
 
+    def _is_relevant_tech_role(self, title: str, desc: str = "") -> bool:
+        """Strictly validates that the job matches Kantubothu Divakara Rao's target tech roles & skills."""
+        title_lower = (title or "").lower()
+        desc_lower = (desc or "").lower()
+
+        # 1. Reject exclusion keywords (marketing, sales, design, hr, etc.)
+        kw_data = load_keywords()
+        excludes = [e.lower() for e in kw_data.get('exclude_keywords', [])]
+        for ex in excludes:
+            if ex in title_lower:
+                return False
+
+        # 2. Must match technical roles & skills
+        tech_roles = [
+            'developer', 'engineer', 'analyst', 'software', 'python', 'machine learning',
+            'ai', 'data science', 'backend', 'full stack', 'database', 'intern', 'java',
+            'deep learning', 'nlp', 'programmer'
+        ]
+        
+        has_tech_title = any(t in title_lower for t in tech_roles)
+        has_tech_skills = any(s in desc_lower for s in ['python', 'machine learning', 'sql', 'fastapi', 'flask', 'data', 'software', 'git'])
+
+        return has_tech_title or has_tech_skills
+
     def search_arbeitnow_jobs(self, keyword: str, limit: int = 10) -> List[Dict[str, Any]]:
-        """Searches Arbeitnow developer job feed (instant, rate-limit free)."""
+        """Searches Arbeitnow developer job feed with strict tech role and skill filtering."""
         jobs = []
         try:
             url = f"https://www.arbeitnow.com/api/job-board-api"
@@ -147,6 +171,11 @@ Return ONLY valid JSON with keys: 'title', 'skills', 'location'.
                 for item in data:
                     title = item.get('title', '')
                     desc = BeautifulSoup(item.get('description', ''), 'html.parser').get_text(separator=' ', strip=True)
+                    
+                    # Strict validation
+                    if not self._is_relevant_tech_role(title, desc):
+                        continue
+
                     if any(w in (title + " " + desc).lower() for w in kw_lower.split()):
                         jobs.append({
                             'title': title,
