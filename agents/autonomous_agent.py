@@ -205,75 +205,79 @@ class AutonomousJobAgent:
 
                 time.sleep(5)
 
-    def _verify_and_tally_email(self, company: str, role: str) -> (bool, str):
+    def _verify_and_tally_email(self, company: str, role: str, max_wait_seconds: int = 45) -> (bool, str):
         """
-        Connects to Gmail via SSL IMAP and tallies incoming confirmation emails:
+        Connects to Gmail via SSL IMAP and actively polls for incoming confirmation emails:
         Checks if subject or sender matches Company Name AND/OR Role keywords.
         """
-        try:
-            import imaplib
-            import email
-            from email.header import decode_header
+        import imaplib
+        import email
+        from email.header import decode_header
 
-            settings = load_settings()
-            email_addr = settings.get('email_address', 'divakantubothu@gmail.com')
-            pwd = settings.get('email_app_password', '').replace(' ', '')
+        settings = load_settings()
+        email_addr = settings.get('email_address', 'divakantubothu@gmail.com')
+        pwd = settings.get('email_app_password', '').replace(' ', '')
 
-            if not pwd:
-                return False, "No email credentials configured"
+        if not pwd:
+            return False, "No email credentials configured"
 
-            mail = imaplib.IMAP4_SSL("imap.gmail.com", 993)
-            mail.login(email_addr, pwd)
-            mail.select("INBOX")
+        comp_clean = company.lower().replace("technology", "").replace("technologies", "").replace("gmbh", "").replace("inc", "").replace("ltd", "").replace("private", "").strip()
+        comp_parts = [p for p in comp_clean.split() if len(p) > 2]
+        role_words = [w.lower() for w in role.split() if len(w) > 3]
 
-            status, messages = mail.search(None, "ALL")
-            if status != "OK" or not messages[0]:
+        start_time = time.time()
+        while time.time() - start_time < max_wait_seconds:
+            try:
+                mail = imaplib.IMAP4_SSL("imap.gmail.com", 993)
+                mail.login(email_addr, pwd)
+                mail.select("INBOX")
+
+                status, messages = mail.search(None, "ALL")
+                if status == "OK" and messages[0]:
+                    msg_ids = messages[0].split()[-12:]
+
+                    for mid in reversed(msg_ids):
+                        _, data = mail.fetch(mid, "(RFC822.HEADER)")
+                        msg = email.message_from_bytes(data[0][1])
+                        sub = msg.get("Subject", "")
+                        from_ = msg.get("From", "")
+
+                        sub_decoded = ""
+                        for part, enc in decode_header(sub):
+                            if isinstance(part, bytes):
+                                sub_decoded += part.decode(enc or 'utf-8', errors='ignore')
+                            else:
+                                sub_decoded += str(part)
+
+                        from_decoded = ""
+                        for part, enc in decode_header(from_):
+                            if isinstance(part, bytes):
+                                from_decoded += part.decode(enc or 'utf-8', errors='ignore')
+                            else:
+                                from_decoded += str(part)
+
+                        combined = f"{sub_decoded} {from_decoded}".lower()
+
+                        # Tally Condition 1: Direct Company Match
+                        if any(cp in combined for cp in comp_parts):
+                            mail.logout()
+                            return True, f"Verified Company Email: '{from_decoded}' - '{sub_decoded}'"
+
+                        # Tally Condition 2: Role keywords + Application keywords
+                        has_app_keyword = any(k in combined for k in ['application', 'bewerbung', 'received', 'recruiting', 'join.com', 'greenhouse', 'lever', 'linkedin', 'workday'])
+                        has_role_keyword = any(rw in combined for rw in role_words)
+
+                        if has_app_keyword and (has_role_keyword or 'linkedin' in from_decoded.lower()):
+                            mail.logout()
+                            return True, f"Verified ATS Confirmation: '{from_decoded}' - '{sub_decoded}'"
+
                 mail.logout()
-                return False, "Inbox empty"
+            except Exception as e:
+                logger.debug(f"Email polling error: {e}")
 
-            msg_ids = messages[0].split()[-10:]
-            comp_clean = company.lower().replace("technology", "").replace("gmbh", "").replace("inc", "").replace("ltd", "").strip()
-            role_words = [w.lower() for w in role.split() if len(w) > 3]
+            time.sleep(10)
 
-            for mid in reversed(msg_ids):
-                _, data = mail.fetch(mid, "(RFC822.HEADER)")
-                msg = email.message_from_bytes(data[0][1])
-                sub = msg.get("Subject", "")
-                from_ = msg.get("From", "")
-
-                sub_decoded = ""
-                for part, enc in decode_header(sub):
-                    if isinstance(part, bytes):
-                        sub_decoded += part.decode(enc or 'utf-8', errors='ignore')
-                    else:
-                        sub_decoded += str(part)
-
-                from_decoded = ""
-                for part, enc in decode_header(from_):
-                    if isinstance(part, bytes):
-                        from_decoded += part.decode(enc or 'utf-8', errors='ignore')
-                    else:
-                        from_decoded += str(part)
-
-                combined = f"{sub_decoded} {from_decoded}".lower()
-
-                # Tally Condition 1: Direct Company Match
-                if comp_clean and comp_clean in combined:
-                    mail.logout()
-                    return True, f"Verified Company Email: '{from_decoded}' - '{sub_decoded}'"
-
-                # Tally Condition 2: Role keywords + Application keywords
-                has_app_keyword = any(k in combined for k in ['application', 'bewerbung', 'received', 'recruiting', 'join.com', 'greenhouse', 'lever', 'linkedin', 'workday'])
-                has_role_keyword = any(rw in combined for rw in role_words)
-
-                if has_app_keyword and (has_role_keyword or 'linkedin' in from_decoded.lower()):
-                    mail.logout()
-                    return True, f"Verified ATS Email: '{from_decoded}' - '{sub_decoded}'"
-
-            mail.logout()
-        except Exception as e:
-            logger.debug(f"Email tally error: {e}")
-        return False, "No matching confirmation email found in recent messages"
+        return False, "No matching confirmation email received within verification window"
 
     def send_mobile_messenger_query(self, question: str, options: List[str]) -> str:
         """
