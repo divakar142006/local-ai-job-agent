@@ -497,27 +497,63 @@ class FormFiller:
             self._find_and_fill_field(page, field, val)
 
     def _answer_step_questions(self, page: Page):
-        """Answers screening questions with AI."""
+        """Answers screening questions using Kantubothu Divakara Rao's exact preferences."""
         try:
-            questions = page.locator('.jobs-easy-apply-form-section__grouping, .fb-dash-form-element, div[data-automation-id*="question"]').all()
-            for q_el in questions[:6]:
-                text = q_el.inner_text().strip()
-                if "experience" in text.lower() or "years" in text.lower():
+            questions = page.locator('.jobs-easy-apply-form-section__grouping, .fb-dash-form-element, div[data-automation-id*="question"], .form-group').all()
+            for q_el in questions[:10]:
+                text = q_el.inner_text().strip().lower()
+                
+                # 1. Experience Years
+                if "experience" in text or "years" in text:
                     inp = q_el.locator('input[type="text"], input[type="number"]').first
                     if inp.is_visible(timeout=500):
-                        inp.fill("2")
-                elif "authorized" in text.lower() or "legally" in text.lower() or "eligible" in text.lower():
+                        inp.fill("0")
+                # 2. Work Authorization
+                elif "authorized" in text or "legally" in text or "eligible" in text:
                     yes_radio = q_el.locator('input[value="Yes"], label:has-text("Yes")').first
                     if yes_radio.is_visible(timeout=500):
                         yes_radio.click()
-                elif "sponsorship" in text.lower() or "visa" in text.lower():
+                # 3. Visa Sponsorship
+                elif "sponsorship" in text or "visa" in text:
                     no_radio = q_el.locator('input[value="No"], label:has-text("No")').first
                     if no_radio.is_visible(timeout=500):
                         no_radio.click()
-                elif "notice" in text.lower():
+                # 4. Notice Period / Availability
+                elif "notice" in text or "join" in text or "availability" in text:
                     inp = q_el.locator('input[type="text"], input[type="number"]').first
                     if inp.is_visible(timeout=500):
-                        inp.fill("Immediate / 15 days")
+                        inp.fill("Immediate (0 days)")
+                    sel = q_el.locator('select').first
+                    if sel.is_visible(timeout=500):
+                        try:
+                            sel.select_option(label="Immediate")
+                        except Exception:
+                            sel.select_option(index=1)
+                # 5. Expected Salary / CTC
+                elif "expected" in text and ("salary" in text or "ctc" in text):
+                    inp = q_el.locator('input[type="text"], input[type="number"]').first
+                    if inp.is_visible(timeout=500):
+                        inp.fill("400000")
+                # 6. Current Salary / CTC
+                elif "current" in text and ("salary" in text or "ctc" in text):
+                    inp = q_el.locator('input[type="text"], input[type="number"]').first
+                    if inp.is_visible(timeout=500):
+                        inp.fill("0")
+                # 7. Willingness to Relocate
+                elif "relocate" in text or "location" in text:
+                    yes_radio = q_el.locator('input[value="Yes"], label:has-text("Yes")').first
+                    if yes_radio.is_visible(timeout=500):
+                        yes_radio.click()
+                # 8. GPA / Marks
+                elif "gpa" in text or "percentage" in text:
+                    inp = q_el.locator('input[type="text"], input[type="number"]').first
+                    if inp.is_visible(timeout=500):
+                        inp.fill("8.09")
+                # 9. Graduation Year
+                elif "graduation" in text or "passing" in text:
+                    inp = q_el.locator('input[type="text"], input[type="number"]').first
+                    if inp.is_visible(timeout=500):
+                        inp.fill("2027")
         except Exception:
             pass
 

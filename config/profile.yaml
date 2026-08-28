@@ -41,6 +41,21 @@ name: Kantubothu Divakara Rao
 phone: +91 8247032485
 portal_password: Diva@142006
 portfolio_url: https://github.com/diva142006
+screening_answers:
+  notice_period: Immediate / Available immediately (0 days)
+  work_authorization: 'Yes'
+  visa_sponsorship: 'No'
+  years_experience_python: '0'
+  years_experience_general: '0'
+  experience_level: Fresher / Entry Level
+  expected_ctc: 3,00,000 - 6,00,000 INR (3 - 6 LPA)
+  expected_ctc_numeric: '400000'
+  current_ctc: '0'
+  relocation_willing: 'Yes'
+  highest_degree: Bachelor of Technology in Computer Science Engineering (CAD)
+  college_name: Bonam Venkata Chalamayya Engineering College
+  graduation_year: '2027'
+  gpa: '8.09'
 projects:
 - description: '- Engineered an algorithmic stock trading system using Python, Flask,
     Scikit-Learn, XGBoost, and Alpaca Trading API.
@@ -126,23 +141,14 @@ skills:
 - Jupyter Notebook
 - Vercel
 summary: 'Motivated Computer Science Engineering student and AI/Python Developer with
-  hands-on
-
-  experience building machine learning models, algorithmic trading agents, financial
-  analytics
-
-  dashboards, and automated business workflows. Proficient in Python, SQL, Java, Scikit-Learn,
-
-  Flask, PostgreSQL, and Power BI with 100+ LeetCode problems solved and multiple
-  technical certifications.
-
-  '
+  hands-on experience building machine learning models, algorithmic trading agents,
+  financial analytics dashboards, and automated business workflows. Proficient in Python,
+  SQL, Java, Scikit-Learn, Flask, PostgreSQL, and Power BI with 100+ LeetCode problems
+  solved and multiple technical certifications.'
 work_experience:
 - company: APSSDC (Govt of Andhra Pradesh)
   description: 'Successfully completed Summer Internship Program on Machine Learning
-    using Python (Cert No: APSSDC/SIP/2026-27/29837).
-
-    '
+    using Python (Cert No: APSSDC/SIP/2026-27/29837).'
   duration: '2026'
   title: Machine Learning Intern
 - company: WS
@@ -156,22 +162,16 @@ work_experience:
     scopes, and align with business goals.
 
     - Produced 15+ comprehensive reports and presentations summarizing actionable
-    insights for key stakeholders.
-
-    '
+    insights for key stakeholders.'
   duration: "January 2024 \u2013 March 2024"
   title: Business Analyst Intern
 - company: Shell, Edunet Foundation & AICTE
   description: 'Completed 4-week virtual internship on Green Skills using Artificial
-    Intelligence technologies sponsored by Shell & AICTE.
-
-    '
+    Intelligence technologies sponsored by Shell & AICTE.'
   duration: July 2025
   title: AI & Green Skills Intern
 - company: Micro Information Technology Services
   description: 'Successfully completed 1-month internship program focused on Python
-    software development, modular programming, and data structures.
-
-    '
+    software development, modular programming, and data structures.'
   duration: June 2025
   title: Python Programming Intern
