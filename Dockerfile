@@ -1,7 +1,11 @@
 FROM python:3.11-slim
 
-# Install system dependencies for Playwright Chromium
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+
+# Install system dependencies & Xvfb virtual display for Playwright
 RUN apt-get update && apt-get install -y \
+    xvfb \
     wget \
     curl \
     gnupg \
@@ -27,21 +31,16 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Copy requirements and install python packages
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Playwright browser binaries
+# Install Playwright Chromium with all OS dependencies
 RUN playwright install chromium --with-deps
 
-# Copy application files
 COPY . .
 
-# Ensure executable entrypoint script
 RUN chmod +x entrypoint.sh
 
-# Expose Streamlit port
 EXPOSE 8501
 
-# Run both the 24/7 Autonomous Agent and the Dashboard
 CMD ["./entrypoint.sh"]

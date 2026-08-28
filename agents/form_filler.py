@@ -82,12 +82,20 @@ class FormFiller:
         state_path = self.get_state_file()
         pw_inst = None
         browser = None
+        is_headless = True if (os.name != 'nt' and not os.environ.get('DISPLAY')) else False
 
         try:
             pw_inst = sync_playwright().start()
             browser = pw_inst.chromium.launch(
-                headless=False,
-                args=['--start-maximized', '--disable-blink-features=AutomationControlled']
+                headless=is_headless,
+                args=[
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu',
+                    '--start-maximized',
+                    '--disable-blink-features=AutomationControlled'
+                ]
             )
 
             context = browser.new_context(
@@ -122,13 +130,17 @@ class FormFiller:
                 except Exception:
                     pass
 
-    def auto_apply(self, url: str, cover_letter: Optional[str] = None, headless: bool = False) -> Dict[str, Any]:
+    def auto_apply(self, url: str, cover_letter: Optional[str] = None, headless: bool = True) -> Dict[str, Any]:
         """
         100% AUTONOMOUS APPLY & SUBMIT:
         Fills details, uploads resume.pdf, solves questions, scrolls down, and CLICKS SUBMIT.
         """
         if not sync_playwright:
             return {'status': 'error', 'message': 'Playwright runs locally on your laptop.'}
+
+        # Auto-detect Linux/Docker cloud headless requirement
+        if os.name != 'nt' and not os.environ.get('DISPLAY'):
+            headless = True
 
         self.profile = load_profile()
         target_url = self.clean_job_url(url)
@@ -142,8 +154,15 @@ class FormFiller:
             pw_inst = sync_playwright().start()
             browser = pw_inst.chromium.launch(
                 headless=headless,
-                slow_mo=300,
-                args=['--start-maximized', '--disable-blink-features=AutomationControlled']
+                slow_mo=200 if not headless else 0,
+                args=[
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu',
+                    '--start-maximized',
+                    '--disable-blink-features=AutomationControlled'
+                ]
             )
 
             if os.path.exists(state_path):
@@ -613,4 +632,5 @@ class FormFiller:
 
     def open_and_prefill(self, url: str, cover_letter: Optional[str] = None) -> Dict[str, Any]:
         """Pre-fills application."""
-        return self.auto_apply(url, cover_letter, headless=False)
+        is_headless = True if (os.name != 'nt' and not os.environ.get('DISPLAY')) else False
+        return self.auto_apply(url, cover_letter, headless=is_headless)
