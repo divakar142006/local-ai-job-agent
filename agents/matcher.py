@@ -78,9 +78,21 @@ class JobMatcher:
                 passed = False
                 reasons.append(f"Contains excluded keyword: '{ex}'")
                 
-        # Check target titles (if specified and title is specific)
+        # Check target titles with flexible token matching
         if target_titles and title not in ['', 'unknown title', 'pasted job', 'job posting', 'job']:
-            if not any(tt in title or tt in description for tt in target_titles):
+            has_match = False
+            for tt in target_titles:
+                tokens = tt.split()
+                if all(tok in title for tok in tokens) or all(tok in description for tok in tokens):
+                    has_match = True
+                    break
+            if not has_match:
+                # Core engineering indicator fallback
+                core_tech = ['python', 'developer', 'engineer', 'analyst', 'software', 'data', 'programmer']
+                if any(c in title for c in core_tech):
+                    has_match = True
+                    
+            if not has_match:
                 passed = False
                 reasons.append("Title/description does not match target titles")
                 
