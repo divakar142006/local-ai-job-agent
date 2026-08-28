@@ -472,12 +472,14 @@ elif page == "🚀 Apply":
     kw_data = load_keywords()
     excludes = [e.lower() for e in kw_data.get('exclude_keywords', [])]
     tech_indicators = ['developer', 'engineer', 'analyst', 'software', 'python', 'ai', 'data', 'intern', 'backend', 'full stack', 'database', 'programmer']
+    preferred_locs = [p.lower() for p in kw_data.get('preferred_locations', [])]
     
     all_unapplied = list(Job.select().where(Job.status != 'applied').order_by(Job.match_score.desc()))
     eligible_jobs = [
         j for j in all_unapplied
         if not any(ex in (j.title or '').lower() for ex in excludes)
         and any(ti in (j.title or '').lower() for ti in tech_indicators)
+        and (not preferred_locs or any(pl in (j.location or 'remote').lower() for pl in preferred_locs))
     ]
     
     with st.expander("🔑 LinkedIn / Naukri Account Login Setup (Important)", expanded=False):

@@ -159,6 +159,17 @@ Return ONLY valid JSON with keys: 'title', 'skills', 'location'.
 
         return has_tech_title or has_tech_skills
 
+    def _is_preferred_location(self, location: str) -> bool:
+        """Strictly validates that the job location matches Kantubothu Divakara Rao's preferred locations."""
+        if not location:
+            return True
+        loc_lower = location.lower()
+        kw_data = load_keywords()
+        preferred = [p.lower() for p in kw_data.get('preferred_locations', [])]
+        if not preferred:
+            return True
+        return any(pref in loc_lower for pref in preferred)
+
     def search_arbeitnow_jobs(self, keyword: str, limit: int = 10) -> List[Dict[str, Any]]:
         """Searches Arbeitnow developer job feed with strict tech role and skill filtering."""
         jobs = []
@@ -170,17 +181,20 @@ Return ONLY valid JSON with keys: 'title', 'skills', 'location'.
                 kw_lower = keyword.lower()
                 for item in data:
                     title = item.get('title', '')
+                    loc = item.get('location', 'Remote')
                     desc = BeautifulSoup(item.get('description', ''), 'html.parser').get_text(separator=' ', strip=True)
                     
-                    # Strict validation
+                    # Strict role and location validation
                     if not self._is_relevant_tech_role(title, desc):
+                        continue
+                    if not self._is_preferred_location(loc):
                         continue
 
                     if any(w in (title + " " + desc).lower() for w in kw_lower.split()):
                         jobs.append({
                             'title': title,
                             'company': item.get('company_name', 'Tech Company'),
-                            'location': item.get('location', 'Remote'),
+                            'location': loc,
                             'url': item.get('url', ''),
                             'salary': 'Competitive',
                             'source': 'Arbeitnow',
@@ -192,15 +206,55 @@ Return ONLY valid JSON with keys: 'title', 'skills', 'location'.
             logger.error(f"Arbeitnow search error: {e}")
         return jobs
 
+    def search_jobicy_jobs(self, keyword: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """Searches Jobicy tech developer job feed with location filtering."""
+        jobs = []
+        try:
+            kw_lower = keyword.lower()
+            tag = "python" if "python" in kw_lower else ("dev" if "engineer" in kw_lower or "developer" in kw_lower else "data")
+            url = f"https://jobicy.com/api/v2/remote-jobs?count={limit*2}&tag={tag}"
+            r = self.session.get(url, timeout=10)
+            if r.status_code == 200:
+                data = r.json().get('jobs', [])
+                for item in data:
+                    title = item.get('jobTitle', '')
+                    loc = item.get('jobGeo', 'Remote')
+                    desc = BeautifulSoup(item.get('jobDescription', ''), 'html.parser').get_text(separator=' ', strip=True)
+                    
+                    if not self._is_relevant_tech_role(title, desc):
+                        continue
+                    if not self._is_preferred_location(loc):
+                        continue
+
+                    jobs.append({
+                        'title': title,
+                        'company': item.get('companyName', 'Tech Corp'),
+                        'location': loc,
+                        'url': item.get('url', ''),
+                        'salary': item.get('annualSalaryMin', 'Competitive'),
+                        'source': 'Jobicy',
+                        'description': desc[:1500]
+                    })
+                    if len(jobs) >= limit:
+                        break
+        except Exception as e:
+            logger.error(f"Jobicy search error: {e}")
+        return jobs
+
     def search_similar_jobs(self, query_title: str, location: str = "Remote", limit: int = 10) -> List[Dict[str, Any]]:
-        """Searches across clean, unrestricted platforms (Arbeitnow & LinkedIn) with zero Cloudflare blocks."""
+        """Searches across Jobicy, Arbeitnow, and LinkedIn feeds."""
         results = []
         
-        # 1. Search Arbeitnow Feed (instant API, zero Cloudflare blocks)
-        arb_jobs = self.search_arbeitnow_jobs(query_title, limit=limit)
-        results.extend(arb_jobs)
+        # 1. Search Jobicy Tech Feed (Python, AI/ML, Software Engineers)
+        jobicy_jobs = self.search_jobicy_jobs(query_title, limit=limit)
+        results.extend(jobicy_jobs)
 
-        # 2. Search LinkedIn Easy Apply Feed
+        # 2. Search Arbeitnow Feed
+        if len(results) < limit:
+            arb_jobs = self.search_arbeitnow_jobs(query_title, limit=limit - len(results))
+            results.extend(arb_jobs)
+
+        # 3. Search LinkedIn Easy Apply Feed
         if len(results) < limit:
             li_jobs = self.search_linkedin(query_title, location, limit=limit - len(results))
             results.extend(li_jobs)

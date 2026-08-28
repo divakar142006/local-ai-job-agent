@@ -17,12 +17,17 @@ preferred_job_types:
 preferred_locations:
 - Hyderabad
 - Bangalore
+- Bengaluru
 - Andhra Pradesh
+- Visakhapatnam
 - Chennai
 - Pune
 - Remote
 - Hybrid
 - India
+- Worldwide
+- Anywhere
+- Work from Home
 target_titles:
 - Python Developer
 - Machine Learning Engineer
