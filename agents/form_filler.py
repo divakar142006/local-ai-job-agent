@@ -445,13 +445,70 @@ class FormFiller:
         except Exception:
             return False
 
+    def _detect_submission_errors(self, page: Page) -> Optional[str]:
+        """Detects explicit form validation or block errors."""
+        error_selectors = [
+            '.alert-danger', '.error-message', '.form-error',
+            '[data-automation-id*="error" i]', '.field-error',
+            'div[role="alert"]:has-text("error")', 'div[role="alert"]:has-text("required")'
+        ]
+        for sel in error_selectors:
+            try:
+                el = page.locator(sel).first
+                if el.is_visible(timeout=500):
+                    err_text = el.inner_text().strip()
+                    if err_text and len(err_text) < 150:
+                        return err_text
+            except Exception:
+                continue
+        return None
+
     def _verify_post_submit_confirmation(self, page: Page) -> Dict[str, Any]:
         """
-        Validates real post-submit confirmation signals:
-        1. Checks for confirmation URL redirection (/thank-you, /confirmation, /success, /submitted).
-        2. Checks DOM for verified confirmation elements ("Application submitted", "Thank you for applying").
-        3. Checks if submit button disappeared (form closed/submitted).
+        Multi-signal Per-ATS Post-Submit Verification:
+        1. Explicit Hard-Fail Error Check (Validation errors / Captcha / Missing fields).
+        2. Per-ATS Specific Success DOM Elements (Workday, Greenhouse, Lever, Join, SmartRecruiters, LinkedIn).
+        3. Confirmation URL redirection patterns.
+        4. Generic confirmation text and Form Unmount detection.
         """
+        time.sleep(3)
+
+        # 1. Hard-Fail Error Check
+        err_msg = self._detect_submission_errors(page)
+        if err_msg:
+            logger.warning(f"❌ Hard-fail error detected during submission: {err_msg}")
+            return {'verified': False, 'hard_fail': True, 'signal': f'Form error: {err_msg}'}
+
+        # 2. Per-ATS Specific Success Selectors
+        ats_selectors = [
+            ('Workday', 'div[data-automation-id="congratulationsPage"], div[data-automation-id="thankYouMessage"], button[data-automation-id="doneButton"]'),
+            ('Greenhouse', '#application_confirmation, .confirmation, .application-confirmation, .submitted-message'),
+            ('Lever', '.post-apply, div[data-qa="success-message"], .application-submitted'),
+            ('Join.com', '.application-success, .join-confirmation, div:has-text("Vielen Dank"), div:has-text("Thank you for applying")'),
+            ('SmartRecruiters', '.application-confirmation, [data-qa="success-message"]'),
+            ('LinkedIn Easy Apply', 'div:has-text("Application sent"), .artdeco-modal:has-text("Application sent"), .artdeco-inline-feedback--success')
+        ]
+
+        for ats_name, selector in ats_selectors:
+            try:
+                el = page.locator(selector).first
+                if el.is_visible(timeout=1000):
+                    logger.info(f"✅ Verified post-submit confirmation via {ats_name} DOM selector: {selector}")
+                    return {'verified': True, 'hard_fail': False, 'signal': f'{ats_name} Confirmed'}
+            except Exception:
+                continue
+
+        # 3. Confirmation URL Pattern check
+        CONFIRMATION_URLS = [
+            "/confirmation", "/thank-you", "/thanks", "/success", "/submitted", "/post-apply", "application-received"
+        ]
+        current_url = page.url.lower()
+        for curl in CONFIRMATION_URLS:
+            if curl in current_url:
+                logger.info(f"✅ Verified post-submit confirmation via URL pattern: {curl}")
+                return {'verified': True, 'hard_fail': False, 'signal': f'URL redirected to {current_url}'}
+
+        # 4. Fuzzy Text Confirmation in Body
         CONFIRMATION_TEXTS = [
             "application submitted",
             "thank you for applying",
@@ -467,37 +524,23 @@ class FormFiller:
             "candidature",
             "application successfully submitted"
         ]
-        
-        CONFIRMATION_URLS = [
-            "/confirmation", "/thank-you", "/thanks", "/success", "/submitted", "/post-apply", "application-received"
-        ]
-        
-        time.sleep(2)
-        current_url = page.url.lower()
         page_text = ""
         try:
             page_text = page.inner_text("body").lower()
         except Exception:
             pass
 
-        # 1. URL Pattern check
-        for curl in CONFIRMATION_URLS:
-            if curl in current_url:
-                logger.info(f"✅ Verified post-submit confirmation via URL pattern: {curl}")
-                return {'verified': True, 'signal': f'URL redirected to {current_url}'}
-
-        # 2. DOM text confirmation check
         for ctext in CONFIRMATION_TEXTS:
             if ctext in page_text:
                 logger.info(f"✅ Verified post-submit confirmation via DOM text: '{ctext}'")
-                return {'verified': True, 'signal': f'DOM confirmed: {ctext}'}
+                return {'verified': True, 'hard_fail': False, 'signal': f'DOM confirmed: {ctext}'}
 
-        # 3. Check if Submit button disappeared (form closed/submitted)
+        # 5. Check if Submit button disappeared (form closed/submitted)
         submit_btn = page.locator('button[type="submit"]:has-text("Submit"), button:has-text("Submit application")').first
         if not submit_btn.is_visible(timeout=800):
-            return {'verified': True, 'signal': 'Form submitted (Submit button closed)'}
+            return {'verified': True, 'hard_fail': False, 'signal': 'Form submitted (Submit button unmounted)'}
 
-        return {'verified': False, 'signal': 'Awaiting email/server confirmation'}
+        return {'verified': False, 'hard_fail': False, 'signal': 'Awaiting email/server confirmation'}
 
     def _click_final_submit(self, page: Page) -> bool:
         """Finds and clicks the primary submit button on the application form."""

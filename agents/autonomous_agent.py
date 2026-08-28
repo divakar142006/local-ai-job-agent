@@ -155,60 +155,40 @@ class AutonomousJobAgent:
                 msg = apply_res.get('message', '')
                 logger.info(f"Submission attempt result: {status} - {msg}")
 
-                # 4. Email Tallying & Verification (Checking Company and Role)
-                self.set_status(True, f"Tallying email confirmation for {company} ({title})...")
-                logger.info(f"📬 Connecting to Gmail to tally confirmation email for {company} ({title})...")
-                time.sleep(12)
+                # 4. Email Verification & Tallying (Platform domain + Subject keywords)
+                self.set_status(True, f"Checking confirmation receipt for {company} ({title})...")
+                logger.info(f"📬 Checking Gmail for confirmation receipt from {company} ({title})...")
+                time.sleep(8)
                 email_confirmed, email_details = self._verify_and_tally_email(company, title)
 
                 if email_confirmed:
-                    logger.info(f"🎉 SUCCESS & TALLIED: {email_details}")
-                    db_job.status = 'applied'
-                    db_job.save()
-
-                    Application.create(
-                        job=db_job,
-                        status='Applied',
-                        platform=job_data.get('source', 'Online'),
-                        cover_letter_used=cl_text
-                    )
-                    self.notifier.notify_applied(title, company)
-                    applied_in_cycle += 1
-
+                    logger.info(f"🎉 CONFIRMED VIA EMAIL RECEIPT: {email_details}")
+                    status_note = f"Applied (Verified by Email: {email_details})"
+                elif status == 'submitted':
+                    logger.info(f"✅ CONFIRMED VIA PORTAL DOM: Application submitted to {company}. Confirmation email pending async delivery from ATS.")
+                    status_note = "Applied (Verified on Portal)"
                 else:
-                    # 5. Missing or Unverified Email -> Auto-Resubmission Routine
-                    logger.warning(f"⚠️ Email not received on 1st check for {company}. Launching automated re-submission...")
-                    self.set_status(True, f"Re-submitting application for {company} to ensure delivery...")
-                    
-                    time.sleep(5)
-                    retry_res = self.filler.auto_apply(url, cover_letter=cl_text, headless=True)
-                    time.sleep(10)
-                    email_retry_confirmed, retry_details = self._verify_and_tally_email(company, title)
+                    logger.info(f"ℹ️ Application dispatched for {company}. Marked for asynchronous verification (no auto-resubmit).")
+                    status_note = "Applied (Pending Async Verification)"
 
-                    if email_retry_confirmed or retry_res.get('status') == 'submitted':
-                        logger.info(f"🎉 RE-SUBMISSION SUCCESS: Application to {company} submitted and confirmed!")
-                        db_job.status = 'applied'
-                        db_job.save()
+                db_job.status = 'applied'
+                db_job.save()
 
-                        Application.create(
-                            job=db_job,
-                            status='Applied',
-                            platform=job_data.get('source', 'Online'),
-                            cover_letter_used=cl_text
-                        )
-                        self.notifier.notify_applied(title, company)
-                        applied_in_cycle += 1
-                    else:
-                        logger.info(f"ℹ️ Application dispatched for {company}. Proceeding to next target role...")
-                        db_job.status = 'applied'
-                        db_job.save()
+                Application.create(
+                    job=db_job,
+                    status=status_note,
+                    platform=job_data.get('source', 'Online'),
+                    cover_letter_used=cl_text
+                )
+                self.notifier.notify_applied(title, company)
+                applied_in_cycle += 1
 
                 time.sleep(5)
 
-    def _verify_and_tally_email(self, company: str, role: str, max_wait_seconds: int = 45) -> (bool, str):
+    def _verify_and_tally_email(self, company: str, role: str, max_wait_seconds: int = 35) -> (bool, str):
         """
-        Connects to Gmail via SSL IMAP and actively polls for incoming confirmation emails:
-        Checks if subject or sender matches Company Name AND/OR Role keywords.
+        Connects to Gmail via SSL IMAP and polls [Gmail]/All Mail and [Gmail]/Spam:
+        Matches on Company Name tokens, known ATS Platform Domains, and Role keywords.
         """
         import imaplib
         import email
@@ -225,13 +205,20 @@ class AutonomousJobAgent:
         comp_parts = [p for p in comp_clean.split() if len(p) > 2]
         role_words = [w.lower() for w in role.split() if len(w) > 3]
 
+        ats_domains = [
+            'greenhouse.io', 'lever.co', 'myworkday.com', 'smartrecruiters.com',
+            'join.com', 'ashbyhq.com', 'linkedin.com', 'icims.com', 'jobvite.com',
+            'workable.com', 'bamboohr.com', 'taleo.net'
+        ]
+
         start_time = time.time()
         while time.time() - start_time < max_wait_seconds:
             try:
                 mail = imaplib.IMAP4_SSL("imap.gmail.com", 993)
                 mail.login(email_addr, pwd)
 
-                folders = ["INBOX", '"[Gmail]/All Mail"', '"[Gmail]/Spam"']
+                # All Mail is a complete superset of Inbox; Spam covers filtered receipts
+                folders = ['"[Gmail]/All Mail"', '"[Gmail]/Spam"']
                 for folder in folders:
                     try:
                         res, _ = mail.select(folder)
@@ -264,18 +251,19 @@ class AutonomousJobAgent:
 
                                 combined = f"{sub_decoded} {from_decoded}".lower()
 
-                                # Tally Condition 1: Direct Company Match
+                                # Tally Condition 1: Direct Company Name Match
                                 if any(cp in combined for cp in comp_parts):
                                     mail.logout()
-                                    return True, f"Verified Company Email ({folder}): '{from_decoded}' - '{sub_decoded}'"
+                                    return True, f"Company Receipt: '{from_decoded}' - '{sub_decoded}'"
 
-                                # Tally Condition 2: Role keywords + Application keywords
-                                has_app_keyword = any(k in combined for k in ['application', 'bewerbung', 'received', 'recruiting', 'join.com', 'greenhouse', 'lever', 'linkedin', 'workday'])
+                                # Tally Condition 2: Known ATS Platform Domain Match
+                                is_ats_platform = any(dom in from_decoded.lower() for dom in ats_domains)
+                                has_app_keyword = any(k in combined for k in ['application', 'bewerbung', 'received', 'recruiting', 'thank you for applying'])
                                 has_role_keyword = any(rw in combined for rw in role_words)
 
-                                if has_app_keyword and (has_role_keyword or 'linkedin' in from_decoded.lower()):
+                                if is_ats_platform and (has_app_keyword or has_role_keyword):
                                     mail.logout()
-                                    return True, f"Verified ATS Confirmation ({folder}): '{from_decoded}' - '{sub_decoded}'"
+                                    return True, f"ATS Receipt: '{from_decoded}' - '{sub_decoded}'"
                     except Exception:
                         continue
 
@@ -283,7 +271,7 @@ class AutonomousJobAgent:
             except Exception as e:
                 logger.debug(f"Email polling error: {e}")
 
-            time.sleep(10)
+            time.sleep(8)
 
         return False, "No matching confirmation email received within verification window"
 
