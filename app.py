@@ -467,7 +467,9 @@ elif page == "🚀 Apply":
                                 st.balloons()
                                 st.success(f"🎉 Successfully applied to {selected_job.title} at {selected_job.company}!")
                                 st.info(f"✅ Details submitted: {', '.join(res.get('fields_filled', []))} | Official Resume: attached (`resume.pdf`)")
-                                time.sleep(1.5)
+                                if res.get('screenshot') and os.path.exists(res['screenshot']):
+                                    st.image(res['screenshot'], caption="📸 Live Application Submission Proof", use_container_width=True)
+                                time.sleep(2)
                                 st.rerun()
                             else:
                                 st.warning(f"Application status: {res.get('message')}")

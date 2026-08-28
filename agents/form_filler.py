@@ -4,7 +4,6 @@ import re
 import time
 import json
 import logging
-import subprocess
 from typing import Dict, Any, Optional, List
 
 try:
@@ -23,9 +22,9 @@ logger = logging.getLogger(__name__)
 class FormFiller:
     """
     Autonomous Form Filler & Application Submitter:
-    - Launches real Google Chrome with persistent session and connects via CDP.
-    - Automates live application form filling, resume attachment, and submission.
-    - Captures real submission confirmation on screen.
+    - Launches a visible browser window directly on your screen.
+    - Types candidate details, attaches resume.pdf, and submits.
+    - Saves a high-resolution screenshot proof of the final submitted page.
     """
 
     FIELD_SELECTORS = {
@@ -68,94 +67,105 @@ class FormFiller:
             url = re.sub(r'https?://[a-zA-Z0-9-]+\.linkedin\.com', 'https://www.linkedin.com', url)
         return url.split("?")[0] if "?" in url and "http" in url else url
 
-    def get_chrome_executable(self) -> str:
-        """Locates Google Chrome on Windows."""
-        paths = [
-            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-            os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe")
-        ]
-        for p in paths:
-            if os.path.exists(p):
-                return p
-        return "chrome.exe"
-
     def auto_apply(self, url: str, cover_letter: Optional[str] = None, headless: bool = False) -> Dict[str, Any]:
         """
         AUTONOMOUS LIVE APPLY:
-        Launches Google Chrome on desktop, connects via CDP, navigates to job URL,
-        fills details from resume, attaches resume.pdf, and submits live!
+        Opens a visible browser on screen, fills candidate details,
+        attaches resume.pdf, submits application, and captures screenshot proof.
         """
         if not sync_playwright:
             return {'status': 'error', 'message': 'Playwright browser automation runs locally on your laptop (http://localhost:8501).'}
 
         self.profile = load_profile()
         target_url = self.clean_job_url(url)
-        chrome_exe = self.get_chrome_executable()
-        user_data_dir = os.path.join(get_project_root(), "chrome_session")
-        os.makedirs(user_data_dir, exist_ok=True)
+        proof_path = os.path.join(get_project_root(), "last_submission_proof.png")
 
-        chrome_proc = None
         pw_inst = None
         browser_inst = None
 
         try:
-            # 1. Launch real Chrome with debugging port
-            cmd = [
-                chrome_exe,
-                "--remote-debugging-port=9222",
-                f"--user-data-dir={user_data_dir}",
-                "--start-maximized",
-                "--no-first-run",
-                "--no-default-browser-check",
-                target_url
-            ]
-            chrome_proc = subprocess.Popen(cmd)
-            time.sleep(3)
-
-            # 2. Connect Playwright to Chrome over CDP
             pw_inst = sync_playwright().start()
-            browser_inst = pw_inst.chromium.connect_over_cdp("http://127.0.0.1:9222")
-            context = browser_inst.contexts[0]
+            # Launch visible browser on desktop
+            browser_inst = pw_inst.chromium.launch(
+                headless=headless,
+                slow_mo=500,  # 500ms delay between actions so user can see every step
+                args=['--start-maximized', '--disable-blink-features=AutomationControlled']
+            )
 
-            # Find or create active page
-            if context.pages:
-                page = context.pages[0]
-            else:
-                page = context.new_page()
+            context = browser_inst.new_context(
+                viewport=None,
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            )
 
-            logger.info(f"Navigating to job page: {target_url}")
+            # Inject LinkedIn session cookie if available
+            settings = load_settings()
+            li_cookie = settings.get('linkedin_cookie') or self.profile.get('linkedin_cookie')
+            if li_cookie and len(li_cookie.strip()) > 20:
+                try:
+                    context.add_cookies([{
+                        'name': 'li_at',
+                        'value': li_cookie.strip(),
+                        'domain': '.linkedin.com',
+                        'path': '/'
+                    }])
+                except Exception:
+                    pass
+
+            page = context.new_page()
+            logger.info(f"Opening visible browser to: {target_url}")
+
             try:
-                page.goto(target_url, wait_until='domcontentloaded', timeout=30000)
-            except Exception:
-                pass
+                page.goto(target_url, wait_until='domcontentloaded', timeout=35000)
+            except Exception as e:
+                logger.warning(f"Initial navigation fallback: {e}")
+                try:
+                    page.goto(target_url, wait_until='load', timeout=35000)
+                except Exception:
+                    pass
 
             time.sleep(3)
 
-            # 3. Handle LinkedIn Apply Actions
+            # 1. Handle LinkedIn Job Page Apply Elements
             if "linkedin.com" in page.url or "linkedin.com" in target_url:
-                # Check for Easy Apply
+                # Check for Easy Apply button
                 easy_apply_btn = page.locator('button.jobs-apply-button, button:has-text("Easy Apply"), .jobs-apply-button--top-card button').first
                 if easy_apply_btn.is_visible(timeout=3000):
-                    logger.info("Clicking LinkedIn Easy Apply button...")
+                    logger.info("Found Easy Apply button. Clicking...")
                     easy_apply_btn.click()
                     time.sleep(2)
-                    return self._handle_linkedin_easy_apply(page, cover_letter)
-
-                # Check for External Apply
-                apply_btn = page.locator('a.jobs-apply-button, button:has-text("Apply"), a:has-text("Apply"), button.apply-button').first
-                if apply_btn.is_visible(timeout=3000):
-                    logger.info("Found Apply button. Navigating to application form...")
+                    res = self._handle_linkedin_easy_apply(page, cover_letter)
                     try:
-                        apply_btn.click()
-                        time.sleep(4)
-                        if len(context.pages) > 1:
-                            page = context.pages[-1]
+                        page.screenshot(path=proof_path)
+                        res['screenshot'] = proof_path
                     except Exception:
                         pass
+                    return res
 
-            # 4. Standard Form Filling (Greenhouse / Lever / Workday / Custom)
-            return self._handle_external_portal_application(page, context, cover_letter)
+                # Check for External Apply button
+                apply_btn = page.locator('a.jobs-apply-button, button:has-text("Apply"), a:has-text("Apply"), button.apply-button').first
+                if apply_btn.is_visible(timeout=3000):
+                    logger.info("Found external Apply button. Clicking to open career portal...")
+                    try:
+                        with context.expect_page(timeout=10000) as new_page_info:
+                            apply_btn.click()
+                        new_page = new_page_info.value
+                        new_page.wait_for_load_state("domcontentloaded", timeout=20000)
+                        page = new_page
+                    except Exception:
+                        try:
+                            apply_btn.click()
+                            time.sleep(3)
+                        except Exception:
+                            pass
+
+            # 2. Handle Career Portal Form (Workday, Oracle Cloud, Greenhouse, Lever)
+            res = self._handle_external_portal_application(page, context, cover_letter)
+            try:
+                page.screenshot(path=proof_path)
+                res['screenshot'] = proof_path
+            except Exception:
+                pass
+            return res
 
         except Exception as e:
             logger.error(f"Auto-apply error: {e}")
@@ -163,7 +173,7 @@ class FormFiller:
         finally:
             if browser_inst:
                 try:
-                    time.sleep(3)
+                    time.sleep(4)  # Leave window open for 4 seconds so user can see final page
                     browser_inst.close()
                 except Exception:
                     pass
@@ -172,11 +182,48 @@ class FormFiller:
                     pw_inst.stop()
                 except Exception:
                     pass
-            if chrome_proc:
-                try:
-                    chrome_proc.terminate()
-                except Exception:
-                    pass
+
+    def _handle_linkedin_easy_apply(self, page: Page, cover_letter: Optional[str] = None) -> Dict[str, Any]:
+        """Navigates LinkedIn Easy Apply multi-step modal until submission is verified."""
+        max_steps = 12
+        resume_attached = False
+
+        for step in range(max_steps):
+            time.sleep(2)
+
+            self._fill_visible_inputs(page)
+
+            resume_file = self.get_resume_path()
+            if resume_file and not resume_attached:
+                if self._upload_resume(page, resume_file):
+                    resume_attached = True
+
+            self._answer_step_questions(page)
+
+            submit_btn = page.locator('button[aria-label="Submit application"], button:has-text("Submit application"), button:has-text("Submit")').first
+            if submit_btn.is_visible(timeout=1000):
+                logger.info("Found Submit Application button! Clicking submit on LinkedIn...")
+                submit_btn.click()
+                time.sleep(4)
+                
+                return {
+                    'status': 'submitted',
+                    'message': '🎉 LinkedIn Confirmed: Your application was officially submitted to the employer!'
+                }
+
+            review_btn = page.locator('button[aria-label="Review your application"], button:has-text("Review")').first
+            if review_btn.is_visible(timeout=1000):
+                review_btn.click()
+                continue
+
+            next_btn = page.locator('button[aria-label="Continue to next step"], button:has-text("Next")').first
+            if next_btn.is_visible(timeout=1000):
+                next_btn.click()
+                continue
+            else:
+                break
+
+        return {'status': 'submitted', 'message': 'Easy Apply application submitted.'}
 
     def _handle_external_portal_application(self, page: Page, context: Any, cover_letter: Optional[str] = None) -> Dict[str, Any]:
         """Handles multi-step external portal applications and automated login."""
@@ -310,48 +357,6 @@ class FormFiller:
                     time.sleep(3)
         except Exception:
             pass
-
-    def _handle_linkedin_easy_apply(self, page: Page, cover_letter: Optional[str] = None) -> Dict[str, Any]:
-        """Navigates LinkedIn Easy Apply multi-step modal until submission is verified."""
-        max_steps = 12
-        resume_attached = False
-
-        for step in range(max_steps):
-            time.sleep(2)
-
-            self._fill_visible_inputs(page)
-
-            resume_file = self.get_resume_path()
-            if resume_file and not resume_attached:
-                if self._upload_resume(page, resume_file):
-                    resume_attached = True
-
-            self._answer_step_questions(page)
-
-            submit_btn = page.locator('button[aria-label="Submit application"], button:has-text("Submit application"), button:has-text("Submit")').first
-            if submit_btn.is_visible(timeout=1000):
-                logger.info("Found Submit Application button! Clicking submit on LinkedIn...")
-                submit_btn.click()
-                time.sleep(4)
-                
-                return {
-                    'status': 'submitted',
-                    'message': '🎉 LinkedIn Confirmed: Your application was officially submitted to the employer!'
-                }
-
-            review_btn = page.locator('button[aria-label="Review your application"], button:has-text("Review")').first
-            if review_btn.is_visible(timeout=1000):
-                review_btn.click()
-                continue
-
-            next_btn = page.locator('button[aria-label="Continue to next step"], button:has-text("Next")').first
-            if next_btn.is_visible(timeout=1000):
-                next_btn.click()
-                continue
-            else:
-                break
-
-        return {'status': 'submitted', 'message': 'Easy Apply application submitted.'}
 
     def _fill_visible_inputs(self, page: Page):
         """Fills standard profile fields on the active LinkedIn dialog."""
