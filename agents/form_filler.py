@@ -94,22 +94,27 @@ class FormFiller:
 
         try:
             pw_inst = sync_playwright().start()
-            user_data_dir = self.get_browser_data_dir()
+            browser_inst = pw_inst.chromium.launch(
+                headless=headless,
+                args=['--start-maximized', '--disable-blink-features=AutomationControlled']
+            )
 
-            # Launch with persistent context
-            try:
-                context = pw_inst.chromium.launch_persistent_context(
-                    user_data_dir=user_data_dir,
-                    channel="chrome",
-                    headless=headless,
-                    args=['--start-maximized', '--disable-blink-features=AutomationControlled'],
-                    user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                )
-            except Exception:
-                context = pw_inst.chromium.launch_persistent_context(
-                    user_data_dir=user_data_dir,
-                    headless=headless,
-                    args=['--start-maximized', '--disable-blink-features=AutomationControlled'],
+            session_file = os.path.join(get_project_root(), "linkedin_session.json")
+            if os.path.exists(session_file):
+                try:
+                    context = browser_inst.new_context(
+                        storage_state=session_file,
+                        viewport=None,
+                        user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                    )
+                except Exception:
+                    context = browser_inst.new_context(
+                        viewport=None,
+                        user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                    )
+            else:
+                context = browser_inst.new_context(
+                    viewport=None,
                     user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
                 )
 
