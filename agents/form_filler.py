@@ -61,48 +61,18 @@ class FormFiller:
 
     def open_linkedin_login_session(self) -> Dict[str, Any]:
         """
-        Opens a visible browser for LinkedIn login, saves session cookies to `linkedin_session.json`.
+        Opens a visible browser for LinkedIn login as an independent desktop window.
         """
-        if not sync_playwright:
-            return {'status': 'error', 'message': 'Playwright is only available locally on your laptop.'}
-
         try:
-            pw = sync_playwright().start()
-            browser = pw.chromium.launch(
-                headless=False,
-                args=['--start-maximized', '--disable-blink-features=AutomationControlled']
-            )
-            context = browser.new_context(
-                viewport=None,
-                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            )
-            page = context.new_page()
-            page.goto('https://www.linkedin.com/login', timeout=60000)
-
-            # Wait for user to log in (wait up to 90 seconds or until URL contains 'feed')
-            session_saved = False
-            for _ in range(30):
-                time.sleep(3)
-                curr_url = page.url
-                if 'feed' in curr_url or 'check' in curr_url or 'mynetwork' in curr_url:
-                    context.storage_state(path=self.get_session_path())
-                    session_saved = True
-                    break
-
-            if not session_saved:
-                # Save whatever state exists upon closing
-                try:
-                    context.storage_state(path=self.get_session_path())
-                except Exception:
-                    pass
-
-            browser.close()
-            pw.stop()
-
-            return {
-                'status': 'opened',
-                'message': '✅ LinkedIn login window launched! Log in and your session is automatically saved to linkedin_session.json.'
-            }
+            import subprocess
+            script_path = os.path.join(get_project_root(), "setup_login.py")
+            if os.path.exists(script_path):
+                subprocess.Popen([sys.executable, script_path], creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == 'nt' else 0)
+                return {
+                    'status': 'opened',
+                    'message': '🚀 Chrome window has opened! Log in to your LinkedIn account in the opened window, and your session will be saved automatically.'
+                }
+            return {'status': 'error', 'message': 'setup_login.py not found.'}
         except Exception as e:
             return {'status': 'error', 'message': str(e)}
 
