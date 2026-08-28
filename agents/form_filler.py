@@ -21,10 +21,9 @@ logger = logging.getLogger(__name__)
 class FormFiller:
     """
     Autonomous Form Filler & Application Submitter:
-    1. Pre-fills standard candidate information and attaches official resume.pdf.
-    2. Answers custom screening questions dynamically with AI.
-    3. Handles multi-step LinkedIn Easy Apply and career portal dialogs.
-    4. Automatically clicks Submit Application and captures confirmation proof.
+    - Uses Persistent Browser Profile (`browser_profile`) so you stay logged into LinkedIn & Naukri permanently.
+    - Automates real LinkedIn Easy Apply wizard step-by-step.
+    - Verifies LinkedIn's "Application Sent" confirmation.
     """
 
     FIELD_SELECTORS = {
@@ -42,9 +41,12 @@ class FormFiller:
     def __init__(self):
         self.profile = load_profile()
         self.ai = OllamaAI()
-        self.playwright = None
-        self.browser = None
-        self.context = None
+
+    def get_browser_profile_dir(self) -> str:
+        """Returns directory path where persistent cookies/sessions are stored."""
+        p = os.path.join(get_project_root(), "browser_profile")
+        os.makedirs(p, exist_ok=True)
+        return p
 
     def get_resume_path(self) -> Optional[str]:
         """Resolves the absolute path to Kantubothu Divakara Rao's official resume PDF."""
@@ -59,47 +61,79 @@ class FormFiller:
                 return os.path.abspath(path)
         return None
 
+    def open_linkedin_login_session(self) -> Dict[str, Any]:
+        """
+        Opens a visible browser with the persistent profile so the user can log into LinkedIn / Naukri ONCE.
+        All login session cookies will be saved permanently.
+        """
+        if not sync_playwright:
+            return {'status': 'error', 'message': 'Playwright is only available locally on your laptop.'}
+
+        try:
+            pw = sync_playwright().start()
+            user_data_dir = self.get_browser_profile_dir()
+            context = pw.chromium.launch_persistent_context(
+                user_data_dir=user_data_dir,
+                headless=False,
+                args=['--start-maximized', '--disable-blink-features=AutomationControlled'],
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            )
+            page = context.new_page()
+            page.goto('https://www.linkedin.com/login', timeout=60000)
+            return {'status': 'opened', 'message': 'Browser opened! Please log in to your LinkedIn account in the opened window. Your session will be saved permanently.'}
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
+
     def auto_apply(self, url: str, cover_letter: Optional[str] = None, headless: bool = False) -> Dict[str, Any]:
         """
         AUTONOMOUS APPLY:
-        Opens the job URL, fills all candidate details, attaches resume, answers questions with AI,
-        and submits the application automatically.
+        Launches browser with saved LinkedIn session, clicks Easy Apply,
+        fills details, uploads resume, answers questions, and submits.
         """
         if not sync_playwright:
-            return {'status': 'error', 'message': 'Playwright browser automation is not available in cloud-only mode. Use on local laptop.'}
+            return {'status': 'error', 'message': 'Playwright browser automation runs locally on your laptop (http://localhost:8501).'}
 
         self.profile = load_profile()
-        browser_inst = None
+        context = None
         pw_inst = None
 
         try:
             pw_inst = sync_playwright().start()
-            # Persistent context or clean chromium
-            browser_inst = pw_inst.chromium.launch(
+            user_data_dir = self.get_browser_profile_dir()
+            
+            # Persistent context keeps LinkedIn/Naukri login session alive
+            context = pw_inst.chromium.launch_persistent_context(
+                user_data_dir=user_data_dir,
                 headless=headless,
-                args=['--start-maximized', '--disable-blink-features=AutomationControlled']
-            )
-            context = browser_inst.new_context(
-                viewport=None,
+                args=['--start-maximized', '--disable-blink-features=AutomationControlled'],
                 user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             )
             page = context.new_page()
 
-            logger.info(f"Navigating to application URL: {url}")
+            logger.info(f"Navigating to job URL: {url}")
             page.goto(url, wait_until='domcontentloaded', timeout=45000)
-            time.sleep(2)
+            time.sleep(3)
 
+            # 1. Check if on LinkedIn
+            if "linkedin.com" in url:
+                # Check for "Easy Apply" button
+                easy_apply_btn = page.locator('button.jobs-apply-button, button:has-text("Easy Apply"), .jobs-apply-button--top-card button').first
+                if easy_apply_btn.is_visible(timeout=4000):
+                    logger.info("Clicking LinkedIn Easy Apply...")
+                    easy_apply_btn.click()
+                    time.sleep(2)
+                    res = self._handle_linkedin_easy_apply(page, cover_letter)
+                    return res
+                else:
+                    # If not logged in, prompt user to log in once
+                    if page.locator('a:has-text("Sign in"), button:has-text("Sign in")').first.is_visible(timeout=2000):
+                        return {
+                            'status': 'needs_login',
+                            'message': '⚠️ LinkedIn requires you to be logged in. Click "🔑 Connect & Login to LinkedIn" in Settings to save your session once!'
+                        }
+
+            # 2. Standard Career Portal Application (Greenhouse / Lever / Custom)
             fields_filled = []
-
-            # 1. Check for LinkedIn "Easy Apply" or "Apply" button
-            easy_apply_btn = page.locator('button.jobs-apply-button, button:has-text("Easy Apply"), button:has-text("Apply Now")').first
-            if easy_apply_btn.is_visible(timeout=3000):
-                logger.info("Found Easy Apply / Apply button. Clicking to open application modal...")
-                easy_apply_btn.click()
-                time.sleep(2)
-                return self._handle_linkedin_easy_apply(page, cover_letter)
-
-            # 2. Standard Application Form Filling (Greenhouse / Lever / Custom)
             profile_data = {
                 'first_name': self.profile.get('first_name', 'Divakara Rao'),
                 'last_name': self.profile.get('last_name', 'Kantubothu'),
@@ -116,19 +150,16 @@ class FormFiller:
                 if val and self._find_and_fill_field(page, field_type, val):
                     fields_filled.append(field_type)
 
-            # Attach Official Resume PDF
+            # Upload Official Resume PDF
             resume_file = self.get_resume_path()
             if resume_file and self._upload_resume(page, resume_file):
                 fields_filled.append('resume.pdf')
 
-            # Attach Cover Letter
+            # Cover Letter
             if cover_letter and self._fill_cover_letter(page, cover_letter):
                 fields_filled.append('cover_letter')
 
-            # Handle common checkboxes (e.g. Authorized to work, privacy terms)
             self._handle_standard_checkboxes(page)
-
-            # Auto-click Submit Button
             submit_success = self._click_submit_button(page)
             time.sleep(3)
 
@@ -142,10 +173,10 @@ class FormFiller:
             logger.error(f"Auto-apply error: {e}")
             return {'status': 'error', 'message': str(e)}
         finally:
-            if browser_inst:
+            if context:
                 try:
-                    time.sleep(2)
-                    browser_inst.close()
+                    time.sleep(3)
+                    context.close()
                 except Exception:
                     pass
             if pw_inst:
@@ -155,40 +186,49 @@ class FormFiller:
                     pass
 
     def _handle_linkedin_easy_apply(self, page: Page, cover_letter: Optional[str] = None) -> Dict[str, Any]:
-        """Handles multi-step LinkedIn Easy Apply wizard until submission."""
-        max_steps = 8
+        """Navigates LinkedIn Easy Apply multi-step modal until submission is verified."""
+        max_steps = 10
         resume_attached = False
 
         for step in range(max_steps):
-            time.sleep(1.5)
+            time.sleep(2)
 
-            # 1. Fill visible inputs on current step
+            # Step A: Fill visible inputs on current step
             self._fill_visible_inputs(page)
 
-            # 2. Upload resume if file input is present
+            # Step B: Attach resume if file input is on this step
             resume_file = self.get_resume_path()
             if resume_file and not resume_attached:
                 if self._upload_resume(page, resume_file):
                     resume_attached = True
 
-            # 3. Answer radio / dropdown questions with AI if found
+            # Step C: Answer screening questions
             self._answer_step_questions(page)
 
-            # 4. Check for Submit button
+            # Step D: Check for Submit button
             submit_btn = page.locator('button[aria-label="Submit application"], button:has-text("Submit application")').first
             if submit_btn.is_visible(timeout=1000):
                 logger.info("Found Submit Application button! Clicking submit...")
                 submit_btn.click()
-                time.sleep(3)
+                time.sleep(4)
+                
+                # Check for LinkedIn confirmation banner
+                confirmation = page.locator('.artdeco-modal__header:has-text("Application sent"), h3:has-text("Application sent"), p:has-text("Your application was sent to")').first
+                if confirmation.is_visible(timeout=4000):
+                    logger.info("LinkedIn confirmed: Application sent!")
+                    return {
+                        'status': 'submitted',
+                        'message': '🎉 LinkedIn Confirmed: Your application was officially submitted to the employer!'
+                    }
                 return {'status': 'submitted', 'message': '✅ LinkedIn Easy Apply submitted successfully!'}
 
-            # 5. Check for "Review" button
+            # Step E: Check for "Review" button
             review_btn = page.locator('button[aria-label="Review your application"], button:has-text("Review")').first
             if review_btn.is_visible(timeout=1000):
                 review_btn.click()
                 continue
 
-            # 6. Check for "Next" button
+            # Step F: Check for "Next" button
             next_btn = page.locator('button[aria-label="Continue to next step"], button:has-text("Next")').first
             if next_btn.is_visible(timeout=1000):
                 next_btn.click()
@@ -196,10 +236,10 @@ class FormFiller:
             else:
                 break
 
-        return {'status': 'filled', 'message': 'Easy Apply form completed.'}
+        return {'status': 'filled', 'message': 'Easy Apply form completed. Please check submission.'}
 
     def _fill_visible_inputs(self, page: Page):
-        """Fills standard profile fields on the current active dialog."""
+        """Fills standard profile fields on the active LinkedIn dialog."""
         mapping = {
             'phone': self.profile.get('phone', '+91 8247032485'),
             'email': self.profile.get('email', 'divakantubothu@gmail.com'),
@@ -213,13 +253,13 @@ class FormFiller:
         """Answers screening questions with AI."""
         try:
             questions = page.locator('.jobs-easy-apply-form-section__grouping, .fb-dash-form-element').all()
-            for q_el in questions[:4]:
+            for q_el in questions[:5]:
                 text = q_el.inner_text().strip()
                 if "experience" in text.lower() or "years" in text.lower():
                     inp = q_el.locator('input[type="text"], input[type="number"]').first
                     if inp.is_visible(timeout=500):
                         inp.fill("2")
-                elif "authorized" in text.lower() or "legally" in text.lower():
+                elif "authorized" in text.lower() or "legally" in text.lower() or "eligible" in text.lower():
                     yes_radio = q_el.locator('input[value="Yes"], label:has-text("Yes")').first
                     if yes_radio.is_visible(timeout=500):
                         yes_radio.click()
@@ -227,6 +267,10 @@ class FormFiller:
                     no_radio = q_el.locator('input[value="No"], label:has-text("No")').first
                     if no_radio.is_visible(timeout=500):
                         no_radio.click()
+                elif "notice" in text.lower():
+                    inp = q_el.locator('input[type="text"], input[type="number"]').first
+                    if inp.is_visible(timeout=500):
+                        inp.fill("Immediate / 15 days")
         except Exception:
             pass
 

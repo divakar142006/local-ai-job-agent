@@ -420,8 +420,17 @@ elif page == "🚀 Apply":
     st.write("Select a job to pre-fill your information in a visible browser window. You can review the filled form and click submit.")
 
     eligible_jobs = list(Job.select().where(Job.status != 'applied').order_by(Job.match_score.desc()))
+    
+    with st.expander("🔑 LinkedIn / Naukri Account Login Setup (Important)", expanded=False):
+        st.write("To allow the agent to submit LinkedIn Easy Apply jobs under your official profile so you receive LinkedIn confirmation emails, log in once below. Your session cookies will be saved permanently.")
+        if st.button("🌐 Open Browser to Log In to LinkedIn"):
+            with st.spinner("Launching browser for one-time LinkedIn login..."):
+                filler = get_form_filler()
+                res = filler.open_linkedin_login_session()
+                st.info(res.get('message'))
+
     if not eligible_jobs:
-        st.info("No active jobs ready for application. Add some jobs on the 'Add Job' page first!")
+        st.info("No active jobs ready for application. Add some jobs on the 'Add Job' or 'Auto Search & Apply' pages first!")
     else:
         job_options = {f"{j.title} at {j.company} (Score: {j.match_score}%)": j for j in eligible_jobs}
         selected_label = st.selectbox("Select Target Job", list(job_options.keys()))
