@@ -182,8 +182,18 @@ class FormFiller:
 
             try:
                 page.goto(target_url, wait_until='domcontentloaded', timeout=35000)
-            except Exception:
-                pass
+            except Exception as nav_err:
+                if "REDIRECTS" in str(nav_err) or "challenge" in str(nav_err):
+                    logger.warning("LinkedIn session cookie expired. Auto-recovering with clean browser session...")
+                    try:
+                        context = browser.new_context(
+                            viewport=None,
+                            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                        )
+                        page = context.new_page()
+                        page.goto(target_url, wait_until='domcontentloaded', timeout=35000)
+                    except Exception:
+                        pass
 
             time.sleep(3)
             self._check_and_bypass_cloudflare(page)
