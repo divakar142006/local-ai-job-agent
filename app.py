@@ -44,7 +44,6 @@ def get_matcher():
 def get_cover_letter_generator():
     return CoverLetterGenerator()
 
-@st.cache_resource
 def get_form_filler():
     return FormFiller()
 
@@ -52,7 +51,6 @@ def get_form_filler():
 def get_notifier():
     return SMSNotifier()
 
-@st.cache_resource
 def get_auto_hunter():
     return AutoJobHunter()
 
