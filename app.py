@@ -130,6 +130,26 @@ def set_job_cover_letter(job_instance, cl_text):
     except Exception as e:
         st.error(f"Error saving cover letter: {e}")
 
+# --- Mobile Messenger Query Alert (Target: 8247032485) ---
+q_file = os.path.join(get_project_root(), "pending_user_queries.json")
+if os.path.exists(q_file):
+    try:
+        with open(q_file, "r", encoding="utf-8") as f:
+            q_info = json.load(f)
+        if q_info.get("status") == "pending":
+            st.warning(f"📱 **Mobile Alert for {q_info.get('mobile', '8247032485')}:** {q_info.get('question')}")
+            opts = q_info.get("options", ["Yes", "No"])
+            selected_resp = st.radio("Select your reply to continue automation:", opts, horizontal=True, key="mobile_q_resp")
+            if st.button("📨 Send Reply to Agent"):
+                q_info["status"] = "answered"
+                q_info["user_reply"] = selected_resp
+                with open(q_file, "w", encoding="utf-8") as f:
+                    json.dump(q_info, f, indent=2)
+                st.success("Reply sent! Agent continuing execution...")
+                st.rerun()
+    except Exception:
+        pass
+
 # =====================================================================
 # PAGE 1: ADD JOB
 # =====================================================================

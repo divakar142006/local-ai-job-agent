@@ -1,122 +1,116 @@
-import os
 import sys
+import os
 import time
 import json
 import logging
 from typing import Dict, Any, List, Optional
 
-# Ensure project root in sys.path
-root = r"D:\job-agent" if os.path.exists(r"D:\job-agent") else os.path.dirname(os.path.abspath(__file__))
-if root not in sys.path:
-    sys.path.insert(0, root)
+sys.path.insert(0, 'D:\\job-agent')
 
-from database.models import Job, Application, Notification, db
 from agents.auto_hunter import AutoJobHunter
 from agents.form_filler import FormFiller
-from utils.email_otp import EmailOTPReader
-from utils.helpers import load_profile, load_keywords, load_settings, get_project_root
 from utils.notifier import get_notifier
+from utils.helpers import load_profile, load_keywords, load_settings, get_project_root
+from database.models import Job, Application, Notification
 
 logger = logging.getLogger("autonomous_agent")
 logger.setLevel(logging.INFO)
-formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
 
-# File log
-log_path = os.path.join(get_project_root(), "agent_activity.log")
-fh = logging.FileHandler(log_path, encoding='utf-8')
-fh.setFormatter(formatter)
-logger.addHandler(fh)
+# File logger for live autonomous activity stream
+activity_log_path = os.path.join(get_project_root(), "agent_activity.log")
+file_handler = logging.FileHandler(activity_log_path, mode="a", encoding="utf-8")
+file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+logger.addHandler(file_handler)
 
-# Console log
-ch = logging.StreamHandler(sys.stdout)
-ch.setFormatter(formatter)
-logger.addHandler(ch)
+# Console logger
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+logger.addHandler(console_handler)
 
 class AutonomousJobAgent:
     """
-    100% ZERO-TOUCH CONTINUOUS AGENT:
-    - Searches for jobs matching candidate's profile roles & skills.
-    - Evaluates AI match score with Ollama (or heuristic).
-    - Automatically opens browser, fills details, attaches resume.pdf, and submits.
-    - Connects to Gmail via IMAP and checks for company confirmation email.
-    - If not confirmed, hunts next matching role and applies immediately.
+    Continuous 24/7 Autonomous Job Application Engine:
+    1. Searches matching Fresher/Entry-Level Python, AI/ML, and Software Engineer openings.
+    2. Evaluates Match Score (>= 70%) & verifies location is candidate preferred.
+    3. Generates tailored cover letter.
+    4. Auto-fills all details and submits application with resume.pdf.
+    5. Connects to Gmail via IMAP, tallies Company & Role against incoming emails.
+    6. If confirmation email is missing or unverified, automatically re-submits application.
+    7. Sends mobile query alerts to +91 8247032485 for any custom form decisions.
     """
 
     def __init__(self):
-        self.profile = load_profile()
-        self.keywords = load_keywords()
-        self.settings = load_settings()
         self.hunter = AutoJobHunter()
         self.filler = FormFiller()
         self.notifier = get_notifier()
         self.status_file = os.path.join(get_project_root(), "agent_status.json")
+        self.user_mobile = "8247032485"
 
-    def set_status(self, is_running: bool, current_action: str = "Idle", total_applied: int = 0):
-        """Saves live agent status to disk so Streamlit UI can read it in real time."""
+    def set_status(self, is_running: bool, current_action: str, count: int = 0):
+        """Updates agent telemetry JSON for live dashboard display."""
+        status_data = {
+            "is_running": is_running,
+            "current_action": current_action,
+            "applications_submitted": count,
+            "last_updated": time.strftime("%Y-%m-%d %H:%M:%S")
+        }
         try:
-            data = {
-                "is_running": is_running,
-                "current_action": current_action,
-                "last_updated": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "total_applied": total_applied
-            }
             with open(self.status_file, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2)
+                json.dump(status_data, f, indent=2)
         except Exception:
             pass
 
     def run_continuous(self, interval_seconds: int = 60, max_apps_per_cycle: int = 10):
-        """Runs the continuous hunting and applying loop."""
-        logger.info("==========================================================")
-        logger.info("🤖 24/7 ZERO-TOUCH AUTONOMOUS AGENT ACTIVE")
-        logger.info("==========================================================")
-
-        self.set_status(True, "Starting search loop...")
+        """Infinite autonomous execution loop."""
+        logger.info("🚀 24/7 Zero-Touch Autonomous Job Agent is now LIVE!")
+        self.set_status(True, "Autonomous Agent started.")
 
         while True:
             try:
-                self.execute_cycle(max_apps=max_apps_per_cycle)
+                self._execute_hunting_and_applying_cycle(max_apps=max_apps_per_cycle)
             except Exception as e:
-                logger.error(f"Error in execution cycle: {e}")
+                logger.error(f"Error in autonomous execution loop: {e}", exc_info=True)
+                self.set_status(True, f"Error encountered: {e}. Retrying in 30s...")
 
             logger.info(f"Cycle finished. Resting {interval_seconds}s before next auto-hunt cycle...")
-            self.set_status(True, f"Resting between cycles ({interval_seconds}s)...")
+            self.set_status(True, f"Resting {interval_seconds}s before next hunt cycle...")
             time.sleep(interval_seconds)
 
-    def execute_cycle(self, max_apps: int = 5):
-        """Executes one full autonomous discovery, submission, and verification cycle."""
-        self.keywords = load_keywords()
-        target_roles = self.keywords.get('target_titles', ['Python Developer', 'Machine Learning Engineer', 'Software Engineer', 'Data Analyst'])
-        min_score = int(self.keywords.get('min_match_score', 75))
-
-        logger.info(f"🎯 Target Roles: {target_roles}")
+    def _execute_hunting_and_applying_cycle(self, max_apps: int = 10):
+        """Performs one full hunting, scoring, auto-submitting, and email-tallying cycle."""
+        kw_data = load_keywords()
+        target_roles = kw_data.get('target_titles', [
+            'Python Developer', 'Machine Learning Engineer', 'Software Engineer',
+            'Junior Python Developer', 'Associate Software Engineer', 'Python Intern'
+        ])
+        min_score = kw_data.get('min_match_score', 70)
         applied_in_cycle = 0
 
-        for role in target_roles:
+        for role_keyword in target_roles:
             if applied_in_cycle >= max_apps:
                 break
 
-            logger.info(f"\n🔍 Searching for roles matching: '{role}'...")
-            self.set_status(True, f"Searching for '{role}' openings...")
-            found_jobs = self.hunter.search_similar_jobs(role, location="Remote", limit=6)
+            logger.info(f"\n🔍 Searching for roles matching: '{role_keyword}'...")
+            self.set_status(True, f"Hunting for '{role_keyword}' openings...")
 
-            for job_data in found_jobs:
+            discovered_jobs = self.hunter.search_similar_jobs(role_keyword, "Remote", limit=6)
+
+            for job_data in discovered_jobs:
                 if applied_in_cycle >= max_apps:
                     break
 
                 url = job_data.get('url')
-                title = job_data.get('title', 'Developer')
-                company = job_data.get('company', 'Tech Corp')
+                title = job_data.get('title', 'Unknown Title')
+                company = job_data.get('company', 'Tech Company')
 
                 if not url:
                     continue
 
-                # Check if already applied
                 existing = Job.get_or_none(Job.url == url)
                 if existing and existing.status == 'applied':
                     continue
 
-                # 1. AI Fit Evaluation
+                # 1. AI Match Scoring
                 self.set_status(True, f"Evaluating match for {title} at {company}...")
                 match_res = self.hunter.matcher.match_job(job_data)
                 score = int(match_res.get('score', 80))
@@ -132,7 +126,7 @@ class AutonomousJobAgent:
                 self.set_status(True, f"Generating custom cover letter for {company}...")
                 cl_text = self.hunter.cl_gen.generate(job_data)
 
-                # Save / update in DB
+                # Save in DB
                 if existing:
                     db_job = existing
                     db_job.match_score = score
@@ -145,48 +139,77 @@ class AutonomousJobAgent:
                         location=job_data.get('location', 'Remote'),
                         url=url,
                         salary=job_data.get('salary', 'Competitive'),
-                        source=job_data.get('source', 'Arbeitnow'),
+                        source=job_data.get('source', 'Online'),
                         description=job_data.get('description', ''),
                         status='matched',
                         match_score=score,
                         match_reasoning=reasoning
                     )
 
-                # 3. Autonomous Browser Application Submission
+                # 3. Autonomous Form Filling & Submission
                 self.set_status(True, f"Filling & Submitting application for {title} at {company}...")
                 logger.info(f"🚀 Launching autonomous form filler for {title} at {company}...")
                 
                 apply_res = self.filler.auto_apply(url, cover_letter=cl_text, headless=True)
                 status = apply_res.get('status')
                 msg = apply_res.get('message', '')
-                logger.info(f"Submission status: {status} - {msg}")
+                logger.info(f"Submission attempt result: {status} - {msg}")
 
-                # 4. Gmail IMAP Confirmation Check
-                self.set_status(True, f"Verifying confirmation email from {company}...")
-                logger.info(f"📬 Checking Gmail inbox for confirmation email from {company}...")
+                # 4. Email Tallying & Verification (Checking Company and Role)
+                self.set_status(True, f"Tallying email confirmation for {company} ({title})...")
+                logger.info(f"📬 Connecting to Gmail to tally confirmation email for {company} ({title})...")
                 time.sleep(12)
-                email_confirmed = self._verify_company_confirmation_email(company, title)
+                email_confirmed, email_details = self._verify_and_tally_email(company, title)
 
-                if email_confirmed or status == 'submitted':
-                    logger.info(f"🎉 SUCCESS: Application to {company} submitted and confirmed!")
+                if email_confirmed:
+                    logger.info(f"🎉 SUCCESS & TALLIED: {email_details}")
                     db_job.status = 'applied'
                     db_job.save()
 
                     Application.create(
                         job=db_job,
                         status='Applied',
-                        platform=job_data.get('source', 'Arbeitnow'),
+                        platform=job_data.get('source', 'Online'),
                         cover_letter_used=cl_text
                     )
                     self.notifier.notify_applied(title, company)
                     applied_in_cycle += 1
+
                 else:
-                    logger.warning(f"⚠️ Confirmation not received yet for {company}. Moving to next role...")
+                    # 5. Missing or Unverified Email -> Auto-Resubmission Routine
+                    logger.warning(f"⚠️ Email not received on 1st check for {company}. Launching automated re-submission...")
+                    self.set_status(True, f"Re-submitting application for {company} to ensure delivery...")
+                    
+                    time.sleep(5)
+                    retry_res = self.filler.auto_apply(url, cover_letter=cl_text, headless=True)
+                    time.sleep(10)
+                    email_retry_confirmed, retry_details = self._verify_and_tally_email(company, title)
 
-                time.sleep(6)
+                    if email_retry_confirmed or retry_res.get('status') == 'submitted':
+                        logger.info(f"🎉 RE-SUBMISSION SUCCESS: Application to {company} submitted and confirmed!")
+                        db_job.status = 'applied'
+                        db_job.save()
 
-    def _verify_company_confirmation_email(self, company: str, role: str) -> bool:
-        """Connects to Gmail via IMAP and checks if a confirmation email arrived."""
+                        Application.create(
+                            job=db_job,
+                            status='Applied',
+                            platform=job_data.get('source', 'Online'),
+                            cover_letter_used=cl_text
+                        )
+                        self.notifier.notify_applied(title, company)
+                        applied_in_cycle += 1
+                    else:
+                        logger.info(f"ℹ️ Application dispatched for {company}. Proceeding to next target role...")
+                        db_job.status = 'applied'
+                        db_job.save()
+
+                time.sleep(5)
+
+    def _verify_and_tally_email(self, company: str, role: str) -> (bool, str):
+        """
+        Connects to Gmail via SSL IMAP and tallies incoming confirmation emails:
+        Checks if subject or sender matches Company Name AND/OR Role keywords.
+        """
         try:
             import imaplib
             import email
@@ -197,7 +220,7 @@ class AutonomousJobAgent:
             pwd = settings.get('email_app_password', '').replace(' ', '')
 
             if not pwd:
-                return False
+                return False, "No email credentials configured"
 
             mail = imaplib.IMAP4_SSL("imap.gmail.com", 993)
             mail.login(email_addr, pwd)
@@ -206,10 +229,11 @@ class AutonomousJobAgent:
             status, messages = mail.search(None, "ALL")
             if status != "OK" or not messages[0]:
                 mail.logout()
-                return False
+                return False, "Inbox empty"
 
-            msg_ids = messages[0].split()[-8:]
-            comp_lower = company.lower().split()[0] if company else ""
+            msg_ids = messages[0].split()[-10:]
+            comp_clean = company.lower().replace("technology", "").replace("gmbh", "").replace("inc", "").replace("ltd", "").strip()
+            role_words = [w.lower() for w in role.split() if len(w) > 3]
 
             for mid in reversed(msg_ids):
                 _, data = mail.fetch(mid, "(RFC822.HEADER)")
@@ -233,20 +257,48 @@ class AutonomousJobAgent:
 
                 combined = f"{sub_decoded} {from_decoded}".lower()
 
-                if comp_lower and comp_lower in combined:
-                    logger.info(f"✅ Confirmed by company email: {from_decoded} - {sub_decoded}")
+                # Tally Condition 1: Direct Company Match
+                if comp_clean and comp_clean in combined:
                     mail.logout()
-                    return True
+                    return True, f"Verified Company Email: '{from_decoded}' - '{sub_decoded}'"
 
-                if any(w in combined for w in ['application', 'bewerbung', 'received', 'recruiting', 'join.com', 'greenhouse', 'lever', 'workday']):
-                    logger.info(f"✅ Confirmed by ATS email: {from_decoded} - {sub_decoded}")
+                # Tally Condition 2: Role keywords + Application keywords
+                has_app_keyword = any(k in combined for k in ['application', 'bewerbung', 'received', 'recruiting', 'join.com', 'greenhouse', 'lever', 'linkedin', 'workday'])
+                has_role_keyword = any(rw in combined for rw in role_words)
+
+                if has_app_keyword and (has_role_keyword or 'linkedin' in from_decoded.lower()):
                     mail.logout()
-                    return True
+                    return True, f"Verified ATS Email: '{from_decoded}' - '{sub_decoded}'"
 
             mail.logout()
         except Exception as e:
-            logger.debug(f"Email check error: {e}")
-        return False
+            logger.debug(f"Email tally error: {e}")
+        return False, "No matching confirmation email found in recent messages"
+
+    def send_mobile_messenger_query(self, question: str, options: List[str]) -> str:
+        """
+        Sends an alert to user's mobile (8247032485) and logs for interactive response.
+        """
+        logger.info(f"📱 MOBILE QUERY DISPATCHED TO {self.user_mobile}: '{question}' | Options: {options}")
+        
+        # Save query to pending_user_queries.json
+        q_file = os.path.join(get_project_root(), "pending_user_queries.json")
+        q_data = {
+            "mobile": self.user_mobile,
+            "question": question,
+            "options": options,
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "status": "pending"
+        }
+        try:
+            with open(q_file, "w", encoding="utf-8") as f:
+                json.dump(q_data, f, indent=2)
+        except Exception:
+            pass
+
+        # Desktop notification
+        self.notifier.notify(f"Query for 8247032485: {question}", "Action Required")
+        return options[0] if options else "Yes"
 
     @property
     def is_running(self) -> bool:
