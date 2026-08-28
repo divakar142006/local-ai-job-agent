@@ -244,7 +244,7 @@ elif page == "📊 Job Pipeline":
     tabs = st.tabs(["All Jobs", "Matched", "New", "Applied", "Rejected"])
     sort_by = st.radio("Sort by", ["Highest score first", "Newest first"], horizontal=True)
 
-    def display_jobs(query):
+    def display_jobs(query, tab_prefix="all"):
         job_list = list(query)
         if not job_list:
             st.info("No jobs found in this category.")
@@ -277,14 +277,14 @@ elif page == "📊 Job Pipeline":
                     current_cl = get_job_cover_letter(job)
                     if current_cl:
                         with st.expander("Tailored Cover Letter"):
-                            new_cl = st.text_area("Cover Letter", value=current_cl, height=180, key=f"cl_view_{job.id}")
+                            new_cl = st.text_area("Cover Letter", value=current_cl, height=180, key=f"cl_view_{tab_prefix}_{job.id}")
                             if new_cl != current_cl:
                                 set_job_cover_letter(job, new_cl)
 
                 with col_right:
                     st.write("**Quick Actions:**")
 
-                    if st.button("✍️ Regenerate Cover Letter", key=f"gen_{job.id}"):
+                    if st.button("✍️ Regenerate Cover Letter", key=f"gen_{tab_prefix}_{job.id}"):
                         with st.spinner("Generating with AI..."):
                             cl_gen = get_cover_letter_generator()
                             new_letter = cl_gen.generate({
@@ -296,7 +296,7 @@ elif page == "📊 Job Pipeline":
                             st.success("Cover letter updated!")
                             st.rerun()
 
-                    if st.button("✅ Mark as Applied", key=f"app_{job.id}"):
+                    if st.button("✅ Mark as Applied", key=f"app_{tab_prefix}_{job.id}"):
                         job.status = "applied"
                         job.save()
                         notifier = get_notifier()
@@ -304,7 +304,7 @@ elif page == "📊 Job Pipeline":
                         st.success("Marked as applied!")
                         st.rerun()
 
-                    if st.button("❌ Mark as Rejected", key=f"rej_{job.id}"):
+                    if st.button("❌ Mark as Rejected", key=f"rej_{tab_prefix}_{job.id}"):
                         job.status = "rejected"
                         job.save()
                         st.info("Marked as rejected.")
@@ -317,15 +317,15 @@ elif page == "📊 Job Pipeline":
         base_query = base_query.order_by(Job.created_at.desc())
 
     with tabs[0]:
-        display_jobs(base_query)
+        display_jobs(base_query, "all")
     with tabs[1]:
-        display_jobs(base_query.where((Job.status == "matched") | (Job.status == "new")).where(Job.match_score >= 40))
+        display_jobs(base_query.where((Job.status == "matched") | (Job.status == "new")).where(Job.match_score >= 40), "matched")
     with tabs[2]:
-        display_jobs(base_query.where(Job.status == "new"))
+        display_jobs(base_query.where(Job.status == "new"), "new")
     with tabs[3]:
-        display_jobs(base_query.where(Job.status == "applied"))
+        display_jobs(base_query.where(Job.status == "applied"), "applied")
     with tabs[4]:
-        display_jobs(base_query.where(Job.status == "rejected"))
+        display_jobs(base_query.where(Job.status == "rejected"), "rejected")
 
 # =====================================================================
 # PAGE 3: APPLY
