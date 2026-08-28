@@ -147,15 +147,16 @@ Return ONLY valid JSON with keys: 'title', 'skills', 'location'.
             if ex in title_lower:
                 return False
 
-        # 2. Must match technical roles & skills
+        # 2. Must match technical roles & skills (including Freshers & Internships)
         tech_roles = [
             'developer', 'engineer', 'analyst', 'software', 'python', 'machine learning',
-            'ai', 'data science', 'backend', 'full stack', 'database', 'intern', 'java',
+            'ai', 'data science', 'backend', 'full stack', 'database', 'intern', 'internship',
+            'fresher', 'entry level', 'trainee', 'graduate', 'associate', 'junior', 'java',
             'deep learning', 'nlp', 'programmer'
         ]
         
         has_tech_title = any(t in title_lower for t in tech_roles)
-        has_tech_skills = any(s in desc_lower for s in ['python', 'machine learning', 'sql', 'fastapi', 'flask', 'data', 'software', 'git'])
+        has_tech_skills = any(s in desc_lower for s in ['python', 'machine learning', 'sql', 'fastapi', 'flask', 'data', 'software', 'git', 'fresher', 'intern'])
 
         return has_tech_title or has_tech_skills
 

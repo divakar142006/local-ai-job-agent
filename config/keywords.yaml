@@ -8,12 +8,24 @@ exclude_keywords:
 - Recruiter
 - Customer Support
 - Call Center
+- Medical
+- Nursing
 min_match_score: 70
+preferred_experience:
+- Fresher
+- Entry Level
+- Zero Experience
+- 0-1 Years
+- 0-2 Years
+- Internship
+- Early Careers
+- Graduate Trainee
 preferred_job_types:
 - Full-time
 - Internship
 - Remote
 - Contract
+- Hybrid
 preferred_locations:
 - Hyderabad
 - Bangalore
@@ -31,11 +43,21 @@ preferred_locations:
 target_titles:
 - Python Developer
 - Machine Learning Engineer
-- Data Analyst
 - AI Engineer
 - Software Engineer
 - Backend Developer
 - Full Stack Developer
-- Python Intern
-- Data Science Intern
+- Data Analyst
+- Junior Python Developer
 - Junior Software Engineer
+- Junior Machine Learning Engineer
+- Associate Software Engineer
+- Graduate Engineer Trainee
+- Python Developer Intern
+- AI / ML Intern
+- Data Science Intern
+- Software Engineering Intern
+- Entry Level Python Developer
+- Entry Level Software Engineer
+- Fresher Software Engineer
+- Fresher Python Developer
