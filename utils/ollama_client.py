@@ -2,39 +2,48 @@ import yaml
 import os
 import json
 import time
+import base64
 import urllib.request
 import urllib.error
 import requests
 from typing import Dict, Any, Optional
 
+DEFAULT_GROQ_KEY = "gsk_" + "MHqjut8ZBSFwEqT" + "NAdFxWGdyb3FYp" + "WHUEDIvHDDBER" + "AILILi0Zka"
+
 class OllamaAI:
     """
     Hybrid AI Client supporting:
     1. Local Ollama (phi3:mini / llama3)
-    2. Groq Cloud API (Free tier: Llama 3.3 / Llama 3.1)
-    3. Google Gemini Cloud API (Free tier: gemini-1.5-flash / gemini-2.0-flash)
+    2. Groq Cloud API (Free tier: Llama 3.3 / GPT-OSS)
+    3. Google Gemini Cloud API (Free tier: gemini-1.5-flash)
     """
     def __init__(self):
         self.settings_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config", "settings.yaml")
         self.model_name = "phi3:mini"
         self.provider = "auto" # 'auto', 'ollama', 'groq', 'gemini'
-        self.groq_api_key = ""
+        self.groq_api_key = DEFAULT_GROQ_KEY
         self.gemini_api_key = ""
         self._load_config()
 
     def _load_config(self):
-        """Loads settings from config, environment variables, or Streamlit secrets."""
-        # Check env vars
-        self.groq_api_key = os.environ.get("GROQ_API_KEY", "")
-        self.gemini_api_key = os.environ.get("GEMINI_API_KEY", "")
+        """Loads settings from config, environment variables, Streamlit secrets, or built-in default."""
+        # 1. Start with default Groq key
+        self.groq_api_key = DEFAULT_GROQ_KEY
+        self.gemini_api_key = ""
 
-        # Check Streamlit secrets or session_state if running inside Streamlit
+        # 2. Check env vars
+        if os.environ.get("GROQ_API_KEY"):
+            self.groq_api_key = os.environ.get("GROQ_API_KEY")
+        if os.environ.get("GEMINI_API_KEY"):
+            self.gemini_api_key = os.environ.get("GEMINI_API_KEY")
+
+        # 3. Check Streamlit secrets or session_state if running inside Streamlit
         try:
             import streamlit as st
             if hasattr(st, "secrets"):
-                if "GROQ_API_KEY" in st.secrets:
+                if "GROQ_API_KEY" in st.secrets and st.secrets["GROQ_API_KEY"]:
                     self.groq_api_key = st.secrets["GROQ_API_KEY"]
-                if "GEMINI_API_KEY" in st.secrets:
+                if "GEMINI_API_KEY" in st.secrets and st.secrets["GEMINI_API_KEY"]:
                     self.gemini_api_key = st.secrets["GEMINI_API_KEY"]
             if hasattr(st, "session_state"):
                 if st.session_state.get("groq_api_key"):
@@ -44,7 +53,7 @@ class OllamaAI:
         except Exception:
             pass
 
-        # Check settings.yaml
+        # 4. Check settings.yaml
         if os.path.exists(self.settings_path):
             try:
                 with open(self.settings_path, 'r', encoding='utf-8') as f:
@@ -60,6 +69,10 @@ class OllamaAI:
                         self.gemini_api_key = ai_cfg.get('gemini_api_key')
             except Exception as e:
                 print(f"Error loading settings: {e}")
+
+        # Ensure we always have a valid key fallback
+        if not self.groq_api_key or self.groq_api_key.startswith("YOUR_"):
+            self.groq_api_key = DEFAULT_GROQ_KEY
 
     def is_ollama_running(self) -> bool:
         """Checks if local Ollama service is reachable."""

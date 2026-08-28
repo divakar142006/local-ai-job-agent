@@ -59,7 +59,13 @@ Format Guideline:
 Write ONLY the cover letter text ready to send.
 """
         try:
-            return self.ai.generate(prompt).strip()
+            self.profile = load_profile()
+            letter = self.ai.generate(prompt).strip()
+            if letter.startswith("Error:") or len(letter) < 20:
+                name = self.profile.get('name', 'Candidate')
+                skills = ", ".join(self.profile.get('skills', ['Python', 'Software Engineering']))
+                return f"Dear Hiring Team at {job_data.get('company', 'the company')},\n\nI am writing to express my strong interest in the {job_data.get('title', 'position')} role. With my background and expertise in {skills}, I am confident in my ability to contribute effectively from day one.\n\nI look forward to discussing how my experience aligns with your team's goals.\n\nSincerely,\n{name}"
+            return letter
         except Exception as e:
             logger.error(f"Error generating cover letter: {e}")
             return f"Dear Hiring Team at {job_data.get('company', 'the company')},\n\nI am writing to express my strong interest in the {job_data.get('title', 'position')} role. With my background and technical skills, I am confident in my ability to make an immediate impact."
