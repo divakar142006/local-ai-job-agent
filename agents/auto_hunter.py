@@ -135,18 +135,51 @@ Return ONLY valid JSON with keys: 'title', 'skills', 'location'.
             logger.error(f"Remotive search error: {e}")
         return jobs
 
+    def search_arbeitnow_jobs(self, keyword: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """Searches Arbeitnow developer job feed (instant, rate-limit free)."""
+        jobs = []
+        try:
+            url = f"https://www.arbeitnow.com/api/job-board-api"
+            r = self.session.get(url, timeout=10)
+            if r.status_code == 200:
+                data = r.json().get('data', [])
+                kw_lower = keyword.lower()
+                for item in data:
+                    title = item.get('title', '')
+                    desc = BeautifulSoup(item.get('description', ''), 'html.parser').get_text(separator=' ', strip=True)
+                    if any(w in (title + " " + desc).lower() for w in kw_lower.split()):
+                        jobs.append({
+                            'title': title,
+                            'company': item.get('company_name', 'Tech Company'),
+                            'location': item.get('location', 'Remote'),
+                            'url': item.get('url', ''),
+                            'salary': 'Competitive',
+                            'source': 'Arbeitnow',
+                            'description': desc[:1500]
+                        })
+                        if len(jobs) >= limit:
+                            break
+        except Exception as e:
+            logger.error(f"Arbeitnow search error: {e}")
+        return jobs
+
     def search_similar_jobs(self, query_title: str, location: str = "Remote", limit: int = 10) -> List[Dict[str, Any]]:
-        """Searches across multiple platforms and aggregates results."""
+        """Searches across multiple platforms (Remotive, Arbeitnow, LinkedIn) with zero rate-limit blocks."""
         results = []
         
-        # 1. Search LinkedIn
-        li_jobs = self.search_linkedin(query_title, location, limit=limit)
-        results.extend(li_jobs)
-        
-        # 2. Search Remote feeds
+        # 1. Search Remotive Feed (instant API)
+        rem_jobs = self.search_remote_jobs(query_title, limit=limit)
+        results.extend(rem_jobs)
+
+        # 2. Search Arbeitnow Feed (instant API)
         if len(results) < limit:
-            rem_jobs = self.search_remote_jobs(query_title, limit=limit - len(results))
-            results.extend(rem_jobs)
+            arb_jobs = self.search_arbeitnow_jobs(query_title, limit=limit - len(results))
+            results.extend(arb_jobs)
+
+        # 3. Search LinkedIn as supplemental feed
+        if len(results) < limit:
+            li_jobs = self.search_linkedin(query_title, location, limit=limit - len(results))
+            results.extend(li_jobs)
             
         return results[:limit]
 
