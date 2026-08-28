@@ -242,23 +242,23 @@ Return ONLY valid JSON with keys: 'title', 'skills', 'location'.
             logger.error(f"Jobicy search error: {e}")
         return jobs
 
-    def search_similar_jobs(self, query_title: str, location: str = "Remote", limit: int = 10) -> List[Dict[str, Any]]:
-        """Searches across Jobicy, Arbeitnow, and LinkedIn feeds."""
+    def search_similar_jobs(self, query_title: str, location: str = "India", limit: int = 10) -> List[Dict[str, Any]]:
+        """Searches LinkedIn Easy Apply first, followed by Arbeitnow and Jobicy."""
         results = []
         
-        # 1. Search Jobicy Tech Feed (Python, AI/ML, Software Engineers)
-        jobicy_jobs = self.search_jobicy_jobs(query_title, limit=limit)
-        results.extend(jobicy_jobs)
+        # 1. Search LinkedIn Easy Apply Feed FIRST (Direct authenticated submission + immediate email receipts)
+        li_jobs = self.search_linkedin(query_title, "India", limit=limit)
+        results.extend(li_jobs)
 
         # 2. Search Arbeitnow Feed
         if len(results) < limit:
             arb_jobs = self.search_arbeitnow_jobs(query_title, limit=limit - len(results))
             results.extend(arb_jobs)
 
-        # 3. Search LinkedIn Easy Apply Feed
+        # 3. Search Jobicy Tech Feed
         if len(results) < limit:
-            li_jobs = self.search_linkedin(query_title, location, limit=limit - len(results))
-            results.extend(li_jobs)
+            jobicy_jobs = self.search_jobicy_jobs(query_title, limit=limit - len(results))
+            results.extend(jobicy_jobs)
             
         return results[:limit]
 
