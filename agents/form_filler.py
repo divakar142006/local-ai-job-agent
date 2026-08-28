@@ -12,7 +12,7 @@ except ImportError:
     Page = Any
 
 from utils.ollama_client import OllamaAI
-from utils.helpers import load_profile, load_keywords, load_settings, sanitize_text, format_job_summary
+from utils.helpers import load_profile, load_keywords, load_settings, sanitize_text, format_job_summary, get_project_root
 from database.models import Job, Application, Notification, initialize_db
 
 logger = logging.getLogger(__name__)
@@ -124,14 +124,31 @@ class FormFiller:
                 continue
         return False
 
-    def _upload_resume(self, page: Page, resume_path: str) -> bool:
+    def _upload_resume(self, page: Page, resume_path: Optional[str] = None) -> bool:
         """
-        Finds file upload input and uploads resume.
+        Finds file upload input and uploads Kantubothu Divakara Rao's official resume PDF.
         """
+        candidates = [
+            resume_path,
+            os.path.join(get_project_root(), "resume.pdf"),
+            r"D:\job-agent\resume.pdf",
+            os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "resume.pdf")
+        ]
+        valid_path = None
+        for path in candidates:
+            if path and os.path.exists(path):
+                valid_path = os.path.abspath(path)
+                break
+
+        if not valid_path:
+            logger.warning("No valid resume.pdf file found on disk.")
+            return False
+
         try:
             file_input = page.locator('input[type="file"]').first
-            if file_input.is_visible(timeout=1000):
-                file_input.set_input_files(resume_path)
+            if file_input.is_visible(timeout=2000):
+                file_input.set_input_files(valid_path)
+                logger.info(f"Successfully attached resume: {valid_path}")
                 return True
         except Exception as e:
             logger.debug(f"Could not upload resume: {e}")
