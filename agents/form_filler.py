@@ -1,5 +1,6 @@
 import sys
 import os
+import re
 import time
 import json
 import logging
@@ -21,10 +22,9 @@ logger = logging.getLogger(__name__)
 class FormFiller:
     """
     Autonomous Form Filler & Application Submitter:
-    - Direct LinkedIn session cookie injection (li_at) for instant 100% authenticated session.
-    - Automates multi-step LinkedIn Easy Apply dialogs.
-    - Follows and fills external employer career portals (Greenhouse, Lever, Workday, etc.).
-    - Attaches Kantubothu Divakara Rao's official resume.pdf and submits.
+    - Navigates cleanly to any job URL without redirect loops.
+    - Handles LinkedIn Easy Apply and follows external employer career portals (Greenhouse, Lever, Workday).
+    - Fills Kantubothu Divakara Rao's details, attaches official resume.pdf, and submits.
     """
 
     FIELD_SELECTORS = {
@@ -56,17 +56,27 @@ class FormFiller:
                 return os.path.abspath(path)
         return None
 
+    def clean_job_url(self, url: str) -> str:
+        """Strips tracking params and canonicalizes LinkedIn job URLs."""
+        if not url:
+            return ""
+        if "linkedin.com/jobs/view" in url:
+            m = re.search(r'(\d{8,12})', url)
+            if m:
+                return f"https://www.linkedin.com/jobs/view/{m.group(1)}/"
+        return url.split("?")[0] if "?" in url and "http" in url else url
+
     def auto_apply(self, url: str, cover_letter: Optional[str] = None, headless: bool = False) -> Dict[str, Any]:
         """
         AUTONOMOUS APPLY:
-        Launches browser with authenticated LinkedIn session, navigates to job URL,
-        handles Easy Apply or company portals, attaches resume.pdf, and submits.
+        Navigates to job posting, clicks Apply / Easy Apply, fills candidate details,
+        attaches resume.pdf, and submits application.
         """
         if not sync_playwright:
             return {'status': 'error', 'message': 'Playwright browser automation runs locally on your laptop (http://localhost:8501).'}
 
         self.profile = load_profile()
-        settings = load_settings()
+        target_url = self.clean_job_url(url)
         pw_inst = None
         browser_inst = None
 
@@ -82,58 +92,45 @@ class FormFiller:
                 user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             )
 
-            # Inject authenticated LinkedIn li_at cookie
-            li_at = settings.get('linkedin_cookie') or self.profile.get('linkedin_cookie')
-            if li_at:
-                try:
-                    context.add_cookies([
-                        {'name': 'li_at', 'value': str(li_at).strip(), 'domain': '.linkedin.com', 'path': '/'},
-                        {'name': 'li_at', 'value': str(li_at).strip(), 'domain': '.www.linkedin.com', 'path': '/'}
-                    ])
-                    logger.info("Injected authenticated LinkedIn session cookie.")
-                except Exception as e:
-                    logger.debug(f"Cookie injection error: {e}")
-
             page = context.new_page()
-            logger.info(f"Navigating to job URL: {url}")
-            page.goto(url, wait_until='domcontentloaded', timeout=45000)
+            logger.info(f"Navigating to: {target_url}")
+
+            try:
+                page.goto(target_url, wait_until='domcontentloaded', timeout=40000)
+            except Exception as e:
+                logger.warning(f"Initial navigation fallback: {e}")
+                page.goto(url, wait_until='load', timeout=40000)
+
             time.sleep(3)
 
-            # 1. Handle LinkedIn Job Pages
-            if "linkedin.com" in url:
-                # Check for Easy Apply
+            # 1. Handle LinkedIn Job Page Apply Elements
+            if "linkedin.com" in page.url or "linkedin.com" in url:
+                # Look for Easy Apply button
                 easy_apply_btn = page.locator('button.jobs-apply-button, button:has-text("Easy Apply"), .jobs-apply-button--top-card button').first
-                if easy_apply_btn.is_visible(timeout=4000):
-                    logger.info("Clicking LinkedIn Easy Apply button...")
+                if easy_apply_btn.is_visible(timeout=3000):
+                    logger.info("Found Easy Apply button. Clicking...")
                     easy_apply_btn.click()
                     time.sleep(2)
                     return self._handle_linkedin_easy_apply(page, cover_letter)
 
-                # Check if already applied
-                if page.locator('span:has-text("Applied"), .artdeco-inline-feedback--success:has-text("Applied")').first.is_visible(timeout=2000):
-                    return {
-                        'status': 'submitted',
-                        'message': '✅ You have already applied for this job on LinkedIn!'
-                    }
-
-                # Check for "Apply on company website" button
-                ext_apply_btn = page.locator('a.jobs-apply-button, button:has-text("Apply"), a:has-text("Apply")').first
-                if ext_apply_btn.is_visible(timeout=3000):
-                    logger.info("Found external company apply button. Following to company portal...")
-                    # Handle popup or navigation
-                    with context.expect_page() as new_page_info:
-                        try:
-                            ext_apply_btn.click()
-                        except Exception:
-                            pass
+                # Look for External Apply button ("Apply", "Apply on company website")
+                apply_btn = page.locator('a.jobs-apply-button, button:has-text("Apply"), a:has-text("Apply"), button.apply-button').first
+                if apply_btn.is_visible(timeout=3000):
+                    logger.info("Found external Apply button. Following to application portal...")
                     try:
+                        with context.expect_page(timeout=10000) as new_page_info:
+                            apply_btn.click()
                         new_page = new_page_info.value
                         new_page.wait_for_load_state("domcontentloaded", timeout=20000)
                         page = new_page
                     except Exception:
-                        pass
+                        try:
+                            apply_btn.click()
+                            time.sleep(3)
+                        except Exception:
+                            pass
 
-            # 2. Standard Career Portal Application Form (Greenhouse, Lever, Workday, etc.)
+            # 2. Standard Career Portal Application Form (Greenhouse / Lever / Workday / Custom)
             fields_filled = []
             profile_data = {
                 'first_name': self.profile.get('first_name', 'Divakara Rao'),
