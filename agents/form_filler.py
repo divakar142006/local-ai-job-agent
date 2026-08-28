@@ -7,10 +7,11 @@ import logging
 from typing import Dict, Any, Optional, List
 
 try:
-    from playwright.sync_api import sync_playwright, Page, TimeoutError as PlaywrightTimeoutError
+    from playwright.sync_api import sync_playwright, Page, BrowserContext, TimeoutError as PlaywrightTimeoutError
 except ImportError:
     sync_playwright = None
     Page = Any
+    BrowserContext = Any
     PlaywrightTimeoutError = Exception
 
 from utils.ollama_client import OllamaAI
@@ -22,9 +23,10 @@ logger = logging.getLogger(__name__)
 class FormFiller:
     """
     Autonomous Form Filler & Application Submitter:
-    - Launches a visible browser window directly on your screen.
-    - Types candidate details, attaches resume.pdf, and submits.
-    - Saves a high-resolution screenshot proof of the final submitted page.
+    - Uses persistent browser profile at D:\job-agent\browser_profile so LinkedIn session stays logged in forever.
+    - Automates Easy Apply modals: fills details, uploads resume.pdf, answers questions, and submits.
+    - Automates external career portals (Workday, Oracle Cloud, Greenhouse).
+    - Captures high-resolution screenshot proof of the confirmed submission.
     """
 
     FIELD_SELECTORS = {
@@ -42,6 +44,12 @@ class FormFiller:
     def __init__(self):
         self.profile = load_profile()
         self.ai = OllamaAI()
+
+    def get_profile_dir(self) -> str:
+        """Returns persistent browser profile directory."""
+        profile_dir = os.path.join(get_project_root(), "browser_profile")
+        os.makedirs(profile_dir, exist_ok=True)
+        return profile_dir
 
     def get_resume_path(self) -> Optional[str]:
         """Resolves absolute path to Kantubothu Divakara Rao's official resume PDF."""
@@ -67,43 +75,84 @@ class FormFiller:
             url = re.sub(r'https?://[a-zA-Z0-9-]+\.linkedin\.com', 'https://www.linkedin.com', url)
         return url.split("?")[0] if "?" in url and "http" in url else url
 
+    def open_linkedin_login_session(self) -> Dict[str, Any]:
+        """
+        Opens a visible browser for the user to log in to LinkedIn once.
+        Saves session persistently to browser_profile.
+        """
+        if not sync_playwright:
+            return {'status': 'error', 'message': 'Playwright browser automation runs locally on your laptop.'}
+
+        profile_dir = self.get_profile_dir()
+        pw_inst = None
+        context = None
+
+        try:
+            pw_inst = sync_playwright().start()
+            context = pw_inst.chromium.launch_persistent_context(
+                profile_dir,
+                headless=False,
+                args=['--start-maximized', '--disable-blink-features=AutomationControlled']
+            )
+
+            page = context.new_page() if not context.pages else context.pages[0]
+            page.goto("https://www.linkedin.com/login", wait_until='domcontentloaded', timeout=40000)
+
+            # Wait up to 120 seconds for user to log in
+            for _ in range(60):
+                time.sleep(2)
+                if "feed" in page.url or "mynetwork" in page.url or "jobs" in page.url:
+                    time.sleep(2)
+                    return {'status': 'success', 'message': '🎉 Successfully logged in to LinkedIn! Your session is now saved.'}
+
+            return {'status': 'info', 'message': 'Browser session closed. If you logged in, your session is saved!'}
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
+        finally:
+            if context:
+                try:
+                    context.close()
+                except Exception:
+                    pass
+            if pw_inst:
+                try:
+                    pw_inst.stop()
+                except Exception:
+                    pass
+
     def auto_apply(self, url: str, cover_letter: Optional[str] = None, headless: bool = False) -> Dict[str, Any]:
         """
-        AUTONOMOUS LIVE APPLY:
-        Opens a visible browser on screen, fills candidate details,
-        attaches resume.pdf, submits application, and captures screenshot proof.
+        AUTONOMOUS APPLY:
+        Opens persistent browser session, navigates to job URL, fills details,
+        uploads resume.pdf, submits application, and captures screenshot proof.
         """
         if not sync_playwright:
             return {'status': 'error', 'message': 'Playwright browser automation runs locally on your laptop (http://localhost:8501).'}
 
         self.profile = load_profile()
         target_url = self.clean_job_url(url)
+        profile_dir = self.get_profile_dir()
         proof_path = os.path.join(get_project_root(), "last_submission_proof.png")
 
         pw_inst = None
-        browser_inst = None
+        context = None
 
         try:
             pw_inst = sync_playwright().start()
-            # Launch visible browser on desktop
-            browser_inst = pw_inst.chromium.launch(
+            # Launch persistent browser profile
+            context = pw_inst.chromium.launch_persistent_context(
+                profile_dir,
                 headless=headless,
-                slow_mo=500,  # 500ms delay between actions so user can see every step
+                slow_mo=500,
                 args=['--start-maximized', '--disable-blink-features=AutomationControlled']
             )
 
-            context = browser_inst.new_context(
-                viewport=None,
-                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            )
-
-            page = context.new_page()
-            logger.info(f"Opening visible browser to: {target_url}")
+            page = context.new_page() if not context.pages else context.pages[0]
+            logger.info(f"Navigating to job: {target_url}")
 
             try:
                 page.goto(target_url, wait_until='domcontentloaded', timeout=35000)
-            except Exception as e:
-                logger.warning(f"Initial navigation fallback: {e}")
+            except Exception:
                 try:
                     page.goto(target_url, wait_until='load', timeout=35000)
                 except Exception:
@@ -130,7 +179,7 @@ class FormFiller:
                 # Check for External Apply button
                 apply_btn = page.locator('a.jobs-apply-button, button:has-text("Apply"), a:has-text("Apply"), button.apply-button').first
                 if apply_btn.is_visible(timeout=3000):
-                    logger.info("Found external Apply button. Clicking to open career portal...")
+                    logger.info("Found external Apply button. Navigating to career portal...")
                     try:
                         with context.expect_page(timeout=10000) as new_page_info:
                             apply_btn.click()
@@ -144,7 +193,7 @@ class FormFiller:
                         except Exception:
                             pass
 
-            # 2. Handle Career Portal Form (Workday, Oracle Cloud, Greenhouse, Lever)
+            # 2. Handle Career Portal Application Form (Workday, Oracle Cloud, Greenhouse, Lever)
             res = self._handle_external_portal_application(page, context, cover_letter)
             try:
                 page.screenshot(path=proof_path)
@@ -157,10 +206,10 @@ class FormFiller:
             logger.error(f"Auto-apply error: {e}")
             return {'status': 'error', 'message': str(e)}
         finally:
-            if browser_inst:
+            if context:
                 try:
-                    time.sleep(4)  # Leave window open for 4 seconds so user can see final page
-                    browser_inst.close()
+                    time.sleep(3)
+                    context.close()
                 except Exception:
                     pass
             if pw_inst:
@@ -188,7 +237,7 @@ class FormFiller:
 
             submit_btn = page.locator('button[aria-label="Submit application"], button:has-text("Submit application"), button:has-text("Submit")').first
             if submit_btn.is_visible(timeout=1000):
-                logger.info("Found Submit Application button! Clicking submit on LinkedIn...")
+                logger.info("Found Submit Application button! Submitting live on LinkedIn...")
                 submit_btn.click()
                 time.sleep(4)
                 
