@@ -236,19 +236,92 @@ Return ONLY valid JSON with keys: 'title', 'skills', 'location'.
             logger.error(f"Jobicy search error: {e}")
         return jobs
 
+    def search_gmail_job_alerts(self, limit: int = 15) -> List[Dict[str, Any]]:
+        """Extracts target job opportunities directly from incoming Job Alert emails in Gmail."""
+        jobs = []
+        try:
+            import imaplib
+            import email
+            from email.header import decode_header
+            from bs4 import BeautifulSoup
+            from utils.helpers import load_settings
+
+            settings = load_settings()
+            email_addr = settings.get('email_address', 'divakantubothu@gmail.com')
+            pwd = settings.get('email_app_password', '').replace(' ', '')
+            if not pwd:
+                return jobs
+
+            mail = imaplib.IMAP4_SSL('imap.gmail.com', 993)
+            mail.login(email_addr, pwd)
+            mail.select('"[Gmail]/All Mail"')
+
+            status, messages = mail.search(None, '(OR FROM "linkedin.com" FROM "bebee.com")')
+            if status == "OK" and messages[0]:
+                msg_ids = messages[0].split()[-20:]
+                for mid in reversed(msg_ids):
+                    try:
+                        _, data = mail.fetch(mid, '(RFC822)')
+                        msg = email.message_from_bytes(data[0][1])
+                        sub = msg.get('Subject', '')
+                        sub_d = ''.join([p.decode(e or 'utf-8', errors='ignore') if isinstance(p, bytes) else str(p) for p, e in decode_header(sub)])
+                        
+                        body = ""
+                        if msg.is_multipart():
+                            for part in msg.walk():
+                                if part.get_content_type() == "text/html":
+                                    body = part.get_payload(decode=True).decode('utf-8', errors='ignore')
+                                    break
+                        else:
+                            body = msg.get_payload(decode=True).decode('utf-8', errors='ignore')
+
+                        if body:
+                            soup = BeautifulSoup(body, 'html.parser')
+                            for a in soup.find_all('a', href=True):
+                                href = a['href']
+                                if "linkedin.com/jobs/view" in href or "/jobs/view/" in href:
+                                    clean_url = href.split('?')[0].replace('/comm/', '/')
+                                    if clean_url.startswith("http") and not any(j['url'] == clean_url for j in jobs):
+                                        title = sub_d.replace("New jobs similar to", "").replace("Alert:", "").strip() or "AI / ML & Software Developer"
+                                        jobs.append({
+                                            'title': title,
+                                            'company': 'Target Employer (Job Alert)',
+                                            'location': 'India / Remote',
+                                            'url': clean_url,
+                                            'source': 'Gmail Job Alerts',
+                                            'description': f"Personalized Job Alert opening: {title}. Sourced directly from your configured job alerts."
+                                        })
+                                        if len(jobs) >= limit:
+                                            break
+                    except Exception:
+                        continue
+                    if len(jobs) >= limit:
+                        break
+
+            mail.logout()
+        except Exception as e:
+            logger.error(f"Error fetching Gmail job alerts: {e}")
+        return jobs
+
     def search_similar_jobs(self, query_title: str, location: str = "India", limit: int = 10) -> List[Dict[str, Any]]:
-        """Searches Direct ATS Portals first (Arbeitnow, Jobicy) followed by LinkedIn."""
+        """Searches Candidate's Personal Job Alerts, Direct ATS Portals, and LinkedIn."""
         results = []
         
-        # 1. Search Direct Company Career Portals & ATS systems (Arbeitnow)
-        arb_jobs = self.search_arbeitnow_jobs(query_title, limit=limit // 2 + 1)
-        results.extend(arb_jobs)
+        # 1. Search Candidate's Configured Job Alerts from Gmail FIRST
+        alert_jobs = self.search_gmail_job_alerts(limit=limit // 2 + 1)
+        results.extend(alert_jobs)
 
-        # 2. Search Direct Tech Company Career Portals (Jobicy ATS)
-        jobicy_jobs = self.search_jobicy_jobs(query_title, limit=limit // 2 + 1)
-        results.extend(jobicy_jobs)
+        # 2. Search Direct Company Career Portals & ATS systems (Arbeitnow)
+        if len(results) < limit:
+            arb_jobs = self.search_arbeitnow_jobs(query_title, limit=limit - len(results))
+            results.extend(arb_jobs)
 
-        # 3. Search LinkedIn Listings
+        # 3. Search Direct Tech Company Career Portals (Jobicy ATS)
+        if len(results) < limit:
+            jobicy_jobs = self.search_jobicy_jobs(query_title, limit=limit - len(results))
+            results.extend(jobicy_jobs)
+
+        # 4. Search LinkedIn Listings
         if len(results) < limit:
             li_jobs = self.search_linkedin(query_title, location, limit=limit - len(results))
             results.extend(li_jobs)
