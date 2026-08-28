@@ -21,8 +21,9 @@ logger = logging.getLogger(__name__)
 class FormFiller:
     """
     Autonomous Form Filler & Application Submitter:
-    - Uses Playwright `storage_state` (`linkedin_session.json`) for seamless, lock-free session persistence.
+    - Uses Persistent Chrome Profile in `D:\job-agent\browser_data` with Google Chrome channel.
     - Automates real LinkedIn Easy Apply wizard step-by-step.
+    - Uploads official resume.pdf and submits applications.
     - Verifies LinkedIn's "Application Sent" confirmation.
     """
 
@@ -42,9 +43,11 @@ class FormFiller:
         self.profile = load_profile()
         self.ai = OllamaAI()
 
-    def get_session_path(self) -> str:
-        """Returns path to the saved LinkedIn session storage state JSON."""
-        return os.path.join(get_project_root(), "linkedin_session.json")
+    def get_browser_data_dir(self) -> str:
+        """Returns directory where Chrome persistent profile is stored."""
+        p = os.path.join(get_project_root(), "browser_data")
+        os.makedirs(p, exist_ok=True)
+        return p
 
     def get_resume_path(self) -> Optional[str]:
         """Resolves the absolute path to Kantubothu Divakara Rao's official resume PDF."""
@@ -61,7 +64,7 @@ class FormFiller:
 
     def open_linkedin_login_session(self) -> Dict[str, Any]:
         """
-        Opens a visible browser for LinkedIn login as an independent desktop window.
+        Opens Google Chrome with the persistent browser_data directory so the user logs in once.
         """
         try:
             import subprocess
@@ -70,7 +73,7 @@ class FormFiller:
                 subprocess.Popen([sys.executable, script_path], creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == 'nt' else 0)
                 return {
                     'status': 'opened',
-                    'message': '🚀 Chrome window has opened! Log in to your LinkedIn account in the opened window, and your session will be saved automatically.'
+                    'message': '🚀 Chrome window opened! Please sign in to LinkedIn in that window to save your session permanently.'
                 }
             return {'status': 'error', 'message': 'setup_login.py not found.'}
         except Exception as e:
@@ -79,40 +82,34 @@ class FormFiller:
     def auto_apply(self, url: str, cover_letter: Optional[str] = None, headless: bool = False) -> Dict[str, Any]:
         """
         AUTONOMOUS APPLY:
-        Launches browser with saved LinkedIn storage_state, clicks Easy Apply,
+        Launches Google Chrome with saved persistent session, clicks Easy Apply,
         fills details, uploads resume, answers questions, and submits.
         """
         if not sync_playwright:
             return {'status': 'error', 'message': 'Playwright browser automation runs locally on your laptop (http://localhost:8501).'}
 
         self.profile = load_profile()
-        browser_inst = None
+        context = None
         pw_inst = None
 
         try:
             pw_inst = sync_playwright().start()
-            browser_inst = pw_inst.chromium.launch(
-                headless=headless,
-                args=['--start-maximized', '--disable-blink-features=AutomationControlled']
-            )
+            user_data_dir = self.get_browser_data_dir()
 
-            # Load saved LinkedIn session if available
-            session_file = self.get_session_path()
-            if os.path.exists(session_file):
-                try:
-                    context = browser_inst.new_context(
-                        storage_state=session_file,
-                        viewport=None,
-                        user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                    )
-                except Exception:
-                    context = browser_inst.new_context(
-                        viewport=None,
-                        user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                    )
-            else:
-                context = browser_inst.new_context(
-                    viewport=None,
+            # Launch with persistent context
+            try:
+                context = pw_inst.chromium.launch_persistent_context(
+                    user_data_dir=user_data_dir,
+                    channel="chrome",
+                    headless=headless,
+                    args=['--start-maximized', '--disable-blink-features=AutomationControlled'],
+                    user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                )
+            except Exception:
+                context = pw_inst.chromium.launch_persistent_context(
+                    user_data_dir=user_data_dir,
+                    headless=headless,
+                    args=['--start-maximized', '--disable-blink-features=AutomationControlled'],
                     user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
                 )
 
@@ -123,7 +120,6 @@ class FormFiller:
 
             # 1. Check if on LinkedIn
             if "linkedin.com" in url:
-                # Check for "Easy Apply" button
                 easy_apply_btn = page.locator('button.jobs-apply-button, button:has-text("Easy Apply"), .jobs-apply-button--top-card button').first
                 if easy_apply_btn.is_visible(timeout=4000):
                     logger.info("Clicking LinkedIn Easy Apply...")
@@ -135,7 +131,7 @@ class FormFiller:
                     if page.locator('a:has-text("Sign in"), button:has-text("Sign in")').first.is_visible(timeout=2000):
                         return {
                             'status': 'needs_login',
-                            'message': '⚠️ LinkedIn session expired or not logged in. Click "🌐 Open Browser to Log In to LinkedIn" to refresh your session!'
+                            'message': '⚠️ LinkedIn session requires sign in. Click "🌐 Open Browser to Log In to LinkedIn" to save your login!'
                         }
 
             # 2. Standard Career Portal Application (Greenhouse / Lever / Custom)
@@ -179,10 +175,10 @@ class FormFiller:
             logger.error(f"Auto-apply error: {e}")
             return {'status': 'error', 'message': str(e)}
         finally:
-            if browser_inst:
+            if context:
                 try:
-                    time.sleep(2)
-                    browser_inst.close()
+                    time.sleep(3)
+                    context.close()
                 except Exception:
                     pass
             if pw_inst:
