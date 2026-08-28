@@ -92,6 +92,27 @@ st.sidebar.metric("Total Jobs", total_jobs)
 st.sidebar.metric("Applications", applied_jobs)
 st.sidebar.metric("Match Rate", f"{match_rate}%")
 
+# --- 24/7 Zero-Touch Autonomous Agent Controls ---
+st.sidebar.divider()
+st.sidebar.subheader("🤖 24/7 Zero-Touch Agent")
+st.sidebar.caption("Continuous automated search, apply, and Gmail email verification with ZERO manual clicks.")
+
+from agents.autonomous_agent import get_autonomous_agent
+auto_agent = get_autonomous_agent()
+
+if auto_agent.is_running:
+    st.sidebar.success("🟢 **Agent ACTIVE (Auto-Applying)**")
+    if st.sidebar.button("🛑 Stop Autonomous Agent", use_container_width=True):
+        auto_agent.stop_background_loop()
+        st.sidebar.info("Autonomous Agent stopped.")
+        st.rerun()
+else:
+    st.sidebar.info("⚪ **Agent Standby**")
+    if st.sidebar.button("⚡ Start 24/7 Zero-Touch Agent", type="primary", use_container_width=True):
+        auto_agent.start_background_loop(interval_seconds=90, max_applications_per_run=20)
+        st.sidebar.success("🚀 Agent started! Running 100% autonomously in background.")
+        st.rerun()
+
 # Helper to get cover letter for a job
 def get_job_cover_letter(job_instance):
     try:
