@@ -177,12 +177,9 @@ class FormFiller:
             try:
                 page.goto(target_url, wait_until='domcontentloaded', timeout=35000)
             except Exception:
-                try:
-                    page.goto(target_url, wait_until='load', timeout=35000)
-                except Exception:
-                    pass
-
             time.sleep(3)
+            # Auto-bypass Cloudflare Turnstile challenge if present
+            self._check_and_bypass_cloudflare(page)
 
             # 1. Handle LinkedIn Job Page Apply Elements
             if "linkedin.com" in page.url or "linkedin.com" in target_url:
@@ -240,7 +237,28 @@ class FormFiller:
                 try:
                     pw_inst.stop()
                 except Exception:
-                    pass
+    def _check_and_bypass_cloudflare(self, page: Page) -> bool:
+        """Detects and auto-clicks Cloudflare Turnstile verification checkboxes."""
+        try:
+            if "just a moment" in page.title().lower() or "challenge" in page.url:
+                logger.info("Cloudflare Turnstile challenge detected. Auto-clicking verification...")
+                for frame in page.frames:
+                    try:
+                        cb = frame.locator('input[type="checkbox"], .ctp-checkbox-label, #challenge-stage input').first
+                        if cb.is_visible(timeout=1500):
+                            cb.click()
+                            time.sleep(3)
+                            return True
+                    except Exception:
+                        pass
+                main_cb = page.locator('#challenge-stage input, input[type="checkbox"]').first
+                if main_cb.is_visible(timeout=1500):
+                    main_cb.click()
+                    time.sleep(3)
+                    return True
+        except Exception:
+            pass
+        return False
 
     def _handle_linkedin_easy_apply(self, page: Page, cover_letter: Optional[str] = None) -> Dict[str, Any]:
         """Navigates LinkedIn Easy Apply multi-step modal until submission is verified."""
