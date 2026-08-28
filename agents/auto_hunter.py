@@ -164,19 +164,14 @@ Return ONLY valid JSON with keys: 'title', 'skills', 'location'.
         return jobs
 
     def search_similar_jobs(self, query_title: str, location: str = "Remote", limit: int = 10) -> List[Dict[str, Any]]:
-        """Searches across multiple platforms (Remotive, Arbeitnow, LinkedIn) with zero rate-limit blocks."""
+        """Searches across clean, unrestricted platforms (Arbeitnow & LinkedIn) with zero Cloudflare blocks."""
         results = []
         
-        # 1. Search Remotive Feed (instant API)
-        rem_jobs = self.search_remote_jobs(query_title, limit=limit)
-        results.extend(rem_jobs)
+        # 1. Search Arbeitnow Feed (instant API, zero Cloudflare blocks)
+        arb_jobs = self.search_arbeitnow_jobs(query_title, limit=limit)
+        results.extend(arb_jobs)
 
-        # 2. Search Arbeitnow Feed (instant API)
-        if len(results) < limit:
-            arb_jobs = self.search_arbeitnow_jobs(query_title, limit=limit - len(results))
-            results.extend(arb_jobs)
-
-        # 3. Search LinkedIn as supplemental feed
+        # 2. Search LinkedIn Easy Apply Feed
         if len(results) < limit:
             li_jobs = self.search_linkedin(query_title, location, limit=limit - len(results))
             results.extend(li_jobs)
