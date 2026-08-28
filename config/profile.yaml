@@ -1,56 +1,150 @@
 # =====================================================================
-# Candidate Profile Configuration
+# Candidate Profile Configuration - Kantubothu Divakara Rao
 # =====================================================================
-# These details are used by the Job Agent to match job descriptions,
-# evaluate match scores, generate cover letters, and auto-fill forms.
+# Extracted directly from official resume PDF for precision job matching,
+# AI scoring, custom cover letters, and Playwright auto-fill.
 
 # Basic Personal Information
-name: "Divakar Kantubothu"
+name: "Kantubothu Divakara Rao"
+first_name: "Divakara Rao"
+last_name: "Kantubothu"
 email: "divakantubothu@gmail.com"
-phone: "+91 98765 43210" # You can adjust your phone number anytime in Settings
-location: "Hyderabad, India"
+phone: "+91 8247032485"
+location: "Andhra Pradesh, India"
 
 # Professional Overview
-experience_years: 2
-current_title: "Python Developer / Software Engineer"
+experience_years: 1.5
+current_title: "AI / Python Developer & Machine Learning Engineer"
 
 # Technical & Professional Skills
 skills:
   - "Python"
-  - "Django"
+  - "SQL"
+  - "Java"
+  - "Pandas"
+  - "NumPy"
+  - "Scikit-Learn"
+  - "Matplotlib"
+  - "XGBoost"
+  - "Flask"
+  - "Flask-SocketIO"
   - "FastAPI"
-  - "PostgreSQL"
+  - "Power BI"
+  - "Tableau"
+  - "Excel"
+  - "MySQL"
   - "SQLite"
-  - "Docker"
-  - "Git"
-  - "REST APIs"
+  - "PostgreSQL"
   - "Machine Learning"
   - "Data Analysis"
+  - "Data Structures & Algorithms"
+  - "Git"
+  - "VS Code"
+  - "PyCharm"
+  - "Jupyter Notebook"
+  - "Vercel"
 
 # Educational Background
 education:
-  - degree: "Bachelor of Technology in Computer Science"
-    college: "Engineering College"
-    year: 2024
+  - degree: "Bachelor of Technology in Computer Science Engineering (CAD)"
+    college: "Bonam Venkata Chalamayya Engineering College"
+    location: "Andhra Pradesh, India"
+    gpa: "8.09 / 10"
+    duration: "September 2023 – April 2027"
+    graduation_year: 2027
+  - degree: "Intermediate (Mathematics, Physics, Chemistry)"
+    college: "Ravindhra Bharathi Junior College"
+    location: "Andhra Pradesh, India"
+    marks: "849"
+    duration: "June 2021 – March 2023"
 
-# Links & Documents
-resume_path: "D:/resume.pdf"
-linkedin_url: "https://www.linkedin.com/in/divakar-kantubothu"
-github_url: "https://github.com/divakar142006"
-portfolio_url: "https://github.com/divakar142006"
+# Coding Profiles & Links
+links:
+  linkedin_url: "https://www.linkedin.com/in/kantubothu-divakara-rao"
+  github_url: "https://github.com/diva142006"
+  leetcode_url: "https://leetcode.com/u/divakar142006"
+  portfolio_url: "https://github.com/diva142006"
+
+linkedin_url: "https://www.linkedin.com/in/kantubothu-divakara-rao"
+github_url: "https://github.com/diva142006"
+portfolio_url: "https://github.com/diva142006"
+resume_path: "D:/job-agent/resume.pdf"
 
 # Professional Summary
 summary: |
-  Motivated and results-driven Software Engineer with strong proficiency in Python,
-  FastAPI, Django, database management, and building automated data pipelines and web services.
-  Skilled at designing clean APIs, solving complex technical challenges, and integrating AI models.
+  Motivated Computer Science Engineering student and AI/Python Developer with hands-on
+  experience building machine learning models, algorithmic trading agents, financial analytics
+  dashboards, and automated business workflows. Proficient in Python, SQL, Java, Scikit-Learn,
+  Flask, PostgreSQL, and Power BI with 100+ LeetCode problems solved and multiple technical certifications.
 
-# Work Experience History
-work_experience:
-  - company: "Tech Solutions Pvt Ltd"
-    title: "Software Engineer"
-    duration: "2024 - Present"
+# Projects History
+projects:
+  - title: "AI Stock Trading Agent & Live Trading Platform"
+    link: "https://github.com/diva142006/stock-ai-trading-agent"
+    duration: "Jan 2024 – Present"
+    technologies: ["Python", "Flask", "Scikit-Learn", "XGBoost", "Alpaca Trading API", "Flask-SocketIO", "WebSockets"]
     description: |
-      Developed RESTful APIs and backend services using FastAPI and Python.
-      Built database models, automated workflows, and integrated third-party APIs.
-      Collaborated using Git version control and Agile methodologies.
+      - Engineered an algorithmic stock trading system using Python, Flask, Scikit-Learn, XGBoost, and Alpaca Trading API.
+      - Achieved 89% prediction accuracy on historical stock data; automated real-time trade signals with risk management protocols.
+      - Developed a WebSocket dashboard with Flask-SocketIO for live data visualization, automated trade execution, and backtesting.
+
+  - title: "VendorBrain — SaaS Spend & Renewal Intelligence Platform"
+    link: "https://github.com/diva142006/vendorbrain"
+    duration: "Dec 2023 – Jan 2024"
+    technologies: ["AI", "GPT-4o", "HTML5", "CSS3", "JavaScript", "Vercel"]
+    description: |
+      - Built an AI-driven vendor relationship platform to track SaaS subscriptions, license utilization, and renewal deadlines.
+      - Automated tracking for 50+ SaaS tools, identifying up to 25% license cost savings using GPT-4o AI negotiation scripts.
+      - Developed 90-day renewal alerts, vendor health scoring, and interactive dashboards using HTML5, CSS3, JavaScript, and Vercel.
+
+  - title: "StockAI Pro — Market Analytics & Portfolio Dashboard"
+    link: "https://github.com/diva142006/stock-ai-analyzer"
+    duration: "Nov 2023 – Dec 2023"
+    technologies: ["JavaScript", "Chart.js", "Financial Analytics", "Portfolio Management"]
+    description: |
+      - Designed and built a financial analytics web app with JavaScript and Chart.js for real-time portfolio tracking.
+      - Optimized dashboard chart rendering speed by 35% for multi-asset allocation, historical trends, and automated financial insights.
+
+# Certifications
+certifications:
+  - "SQL (Advanced) Skill Certification | HackerRank (Cert ID: 40ED59DFEC3B)"
+  - "Java (Basic) Skill Certification | HackerRank (Cert ID: 934CAAECA186)"
+  - "LeetCode 75 Coding Milestone Badge (101 Problems Solved)"
+  - "Python for Data Science | IBM (Credly Verified Badge)"
+  - "Artificial Intelligence & Data Science Certifications | Infosys Springboard"
+  - "Introduction to Cybersecurity Awareness & Data Science | HP LIFE"
+  - "AI Engineer Skill Certification | One Roadmap (ID: CERT-AF9CCD6A)"
+  - "Full Stack Developer Skill Certification | One Roadmap (ID: CERT-F12C00F4)"
+  - "Green Skills using AI Technologies Certification | Shell, Edunet & AICTE"
+  - "Python Programming Certificate | Micro Information Technology Services (MITS076255)"
+  - "Programming in Python | Meta"
+  - "Foundations: Data, Data, Everywhere | Google"
+
+# Internships & Work Experience History
+work_experience:
+  - company: "APSSDC (Govt of Andhra Pradesh)"
+    title: "Machine Learning Intern"
+    duration: "2026"
+    description: |
+      Successfully completed Summer Internship Program on Machine Learning using Python (Cert No: APSSDC/SIP/2026-27/29837).
+
+  - company: "WS"
+    title: "Business Analyst Intern"
+    duration: "January 2024 – March 2024"
+    description: |
+      - Streamlined data collection and reporting procedures, reducing processing time by 20% and enhancing efficiency.
+      - Implemented process improvements and automation solutions, resulting in a 15% increase in productivity.
+      - Collaborated with 3+ cross-functional teams to gather requirements, define project scopes, and align with business goals.
+      - Produced 15+ comprehensive reports and presentations summarizing actionable insights for key stakeholders.
+
+  - company: "Shell, Edunet Foundation & AICTE"
+    title: "AI & Green Skills Intern"
+    duration: "July 2025"
+    description: |
+      Completed 4-week virtual internship on Green Skills using Artificial Intelligence technologies sponsored by Shell & AICTE.
+
+  - company: "Micro Information Technology Services"
+    title: "Python Programming Intern"
+    duration: "June 2025"
+    description: |
+      Successfully completed 1-month internship program focused on Python software development, modular programming, and data structures.

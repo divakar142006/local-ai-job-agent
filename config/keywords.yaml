@@ -1,38 +1,46 @@
 # =====================================================================
 # Job Search & Filtering Keywords Configuration
 # =====================================================================
-# This configuration determines how the scraper and matching agents filter
-# and score job opportunities.
+# Optimized for Kantubothu Divakara Rao's skills and experience level
 
-# Target job titles to search for across job boards
+# Target job titles to search and match
 target_titles:
   - "Python Developer"
-  - "Software Engineer"
+  - "Machine Learning Engineer"
   - "Data Analyst"
+  - "AI Engineer"
+  - "Software Engineer"
   - "Backend Developer"
-  - "Junior Python Developer"
+  - "Python Intern"
+  - "Data Science Intern"
+  - "Junior Software Engineer"
+  - "Graduate Engineer Trainee"
 
-# Minimum match score (0-100) calculated by AI matcher to consider a job
-min_match_score: 60
+# Minimum match score (0-100) calculated by AI matcher
+min_match_score: 50
 
-# Keywords to exclude jobs (e.g. overqualified roles, specific technologies)
+# Keywords to exclude jobs (overqualified / irrelevant)
 exclude_keywords:
-  - "senior"
-  - "lead"
+  - "senior architect"
+  - "lead architect"
   - "10+ years"
-  - "principal"
-  - "architect"
-  - "staff engineer"
+  - "director"
+  - "principal engineer"
 
 # Desired job locations
 preferred_locations:
   - "Hyderabad"
   - "Bangalore"
+  - "Andhra Pradesh"
+  - "Chennai"
+  - "Pune"
   - "Remote"
   - "Hybrid"
+  - "India"
 
 # Preferred employment types
 preferred_job_types:
   - "Full-time"
+  - "Internship"
   - "Remote"
   - "Contract"
