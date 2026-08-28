@@ -387,6 +387,29 @@ class FormFiller:
         except Exception:
             pass
 
+    def _click_submit_button(self, page: Page) -> bool:
+        """Finds and clicks the primary submit / apply button."""
+        submit_selectors = [
+            'button[data-automation-id="submit-button"]',
+            'button[data-automation-id="bottom-navigation-next-button"]:has-text("Submit")',
+            'button[type="submit"]',
+            'input[type="submit"]',
+            'button:has-text("Submit Application")',
+            'button:has-text("Submit application")',
+            'button:has-text("Submit")',
+            'button:has-text("Send Application")',
+            'button:has-text("Apply Now")'
+        ]
+        for sel in submit_selectors:
+            try:
+                btn = page.locator(sel).first
+                if btn.is_visible(timeout=1000) and btn.is_enabled():
+                    btn.click()
+                    return True
+            except Exception:
+                continue
+        return False
+
     def open_and_prefill(self, url: str, cover_letter: Optional[str] = None) -> Dict[str, Any]:
         """Pre-fills application."""
         return self.auto_apply(url, cover_letter, headless=False)
