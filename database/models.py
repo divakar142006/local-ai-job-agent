@@ -3,11 +3,13 @@ import os
 from peewee import *
 from contextlib import contextmanager
 
-# Define the database path
-DB_DIR = r"D:\job-agent\database"
-DB_PATH = os.path.join(DB_DIR, "jobs.db")
+# Determine the database directory dynamically
+if os.path.exists(r"D:\job-agent\database"):
+    DB_DIR = r"D:\job-agent\database"
+else:
+    DB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "database")
 
-# Create the database directory if it doesn't exist
+DB_PATH = os.path.join(DB_DIR, "jobs.db")
 os.makedirs(DB_DIR, exist_ok=True)
 
 # Initialize the SQLite database connection
@@ -57,7 +59,7 @@ class Application(BaseModel):
     """
     job = ForeignKeyField(Job, backref='applications')
     cover_letter = TextField(null=True)
-    custom_answers = TextField(null=True) # Could store JSON string
+    custom_answers = TextField(null=True)
     resume_used = TextField(null=True)
     status = TextField(default='draft') # choices: draft/ready/submitted/failed
     applied_at = DateTimeField(null=True)
@@ -85,18 +87,17 @@ def get_db():
 def initialize_db():
     """
     Creates the database tables if they do not exist.
-    Run this function when starting the application.
     """
-    with db:
+    try:
+        if db.is_closed():
+            db.connect()
         db.create_tables([Job, Application, Notification])
-        print("Database initialized and tables created (if they didn't exist).")
+    except Exception as e:
+        print(f"DB Init note: {e}")
 
 @contextmanager
 def db_session():
-    """
-    Context manager for database sessions.
-    Useful for ensuring the connection is closed after use.
-    """
+    """Context manager for database sessions."""
     if db.is_closed():
         db.connect()
     try:

@@ -14,7 +14,7 @@ from agents.matcher import JobMatcher
 from agents.cover_letter import CoverLetterGenerator
 from agents.form_filler import FormFiller
 from agents.notifier import SMSNotifier
-from utils.helpers import load_profile, load_keywords, load_settings, save_yaml
+from utils.helpers import load_profile, load_keywords, load_settings, save_yaml, get_project_root
 from utils.ollama_client import OllamaAI
 
 # UI Setup
@@ -439,7 +439,8 @@ elif page == "⚙️ Settings":
             profile['summary'] = summary
             profile['skills'] = [s.strip() for s in skills_text.split(",") if s.strip()]
 
-            save_yaml(os.path.join(os.path.dirname(os.path.abspath(__file__)), "config", "profile.yaml"), profile)
+            st.session_state["user_profile"] = profile
+            save_yaml(os.path.join(get_project_root(), "config", "profile.yaml"), profile)
             st.success("Candidate profile updated successfully!")
 
     st.divider()
@@ -464,7 +465,8 @@ elif page == "⚙️ Settings":
             keywords['exclude_keywords'] = [s.strip() for s in exclude_text.split(",") if s.strip()]
             keywords['min_match_score'] = min_score
 
-            save_yaml(os.path.join(os.path.dirname(os.path.abspath(__file__)), "config", "keywords.yaml"), keywords)
+            st.session_state["user_keywords"] = keywords
+            save_yaml(os.path.join(get_project_root(), "config", "keywords.yaml"), keywords)
             st.success("Job search criteria updated!")
 
     st.divider()

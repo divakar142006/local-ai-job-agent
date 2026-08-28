@@ -2,45 +2,85 @@ import yaml
 import os
 import re
 
+def get_project_root() -> str:
+    """
+    Returns the absolute path to the project root directory across any OS (Windows / Linux / Cloud).
+    """
+    if os.path.exists(r"D:\job-agent"):
+        return r"D:\job-agent"
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 def load_yaml(filepath: str) -> dict:
     """
     Loads a YAML file and returns its contents as a dictionary.
     """
     if not os.path.exists(filepath):
         return {}
-    with open(filepath, 'r', encoding='utf-8') as f:
-        return yaml.safe_load(f) or {}
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            return yaml.safe_load(f) or {}
+    except Exception as e:
+        print(f"Error loading YAML {filepath}: {e}")
+        return {}
 
 def save_yaml(filepath: str, data: dict) -> None:
     """
-    Saves a dictionary to a YAML file.
+    Saves a dictionary to a YAML file, ensuring parent directories exist.
     """
-    with open(filepath, 'w', encoding='utf-8') as f:
-        yaml.dump(data, f, default_flow_style=False)
-
-def get_project_root() -> str:
-    """
-    Returns the absolute path to the project root directory.
-    """
-    return r"D:\job-agent"
+    try:
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        with open(filepath, 'w', encoding='utf-8') as f:
+            yaml.dump(data, f, default_flow_style=False)
+    except Exception as e:
+        print(f"Error saving YAML {filepath}: {e}")
 
 def load_profile() -> dict:
     """
-    Loads the user profile configuration.
+    Loads the user profile configuration from disk, session_state, or secrets.
     """
-    return load_yaml(os.path.join(get_project_root(), "config", "profile.yaml"))
+    data = load_yaml(os.path.join(get_project_root(), "config", "profile.yaml"))
+    
+    # Check Streamlit session_state for dynamic user edits
+    try:
+        import streamlit as st
+        if hasattr(st, "session_state") and "user_profile" in st.session_state:
+            data.update(st.session_state["user_profile"])
+        if hasattr(st, "secrets") and "profile" in st.secrets:
+            data.update(st.secrets["profile"])
+    except Exception:
+        pass
+    return data
 
 def load_keywords() -> dict:
     """
     Loads the job search keywords configuration.
     """
-    return load_yaml(os.path.join(get_project_root(), "config", "keywords.yaml"))
+    data = load_yaml(os.path.join(get_project_root(), "config", "keywords.yaml"))
+    try:
+        import streamlit as st
+        if hasattr(st, "session_state") and "user_keywords" in st.session_state:
+            data.update(st.session_state["user_keywords"])
+    except Exception:
+        pass
+    return data
 
 def load_settings() -> dict:
     """
     Loads the agent settings configuration.
     """
-    return load_yaml(os.path.join(get_project_root(), "config", "settings.yaml"))
+    data = load_yaml(os.path.join(get_project_root(), "config", "settings.yaml"))
+    try:
+        import streamlit as st
+        if hasattr(st, "session_state") and "user_settings" in st.session_state:
+            data.update(st.session_state["user_settings"])
+        if hasattr(st, "secrets"):
+            if "GROQ_API_KEY" in st.secrets:
+                data.setdefault("ai", {})["groq_api_key"] = st.secrets["GROQ_API_KEY"]
+            if "GEMINI_API_KEY" in st.secrets:
+                data.setdefault("ai", {})["gemini_api_key"] = st.secrets["GEMINI_API_KEY"]
+    except Exception:
+        pass
+    return data
 
 def format_job_summary(job: dict) -> str:
     """
@@ -59,9 +99,7 @@ def sanitize_text(text: str) -> str:
     """
     if not text:
         return ""
-    # Remove HTML tags
     clean_text = re.sub(r'<[^>]+>', ' ', text)
-    # Remove extra whitespace
     clean_text = re.sub(r'\s+', ' ', clean_text).strip()
     return clean_text
 
@@ -78,11 +116,6 @@ def ensure_directories() -> None:
     Creates all necessary project directories if they don't already exist.
     """
     root = get_project_root()
-    dirs = [
-        "config",
-        "database",
-        "utils",
-        "logs"
-    ]
+    dirs = ["config", "database", "utils", "logs"]
     for d in dirs:
         os.makedirs(os.path.join(root, d), exist_ok=True)
