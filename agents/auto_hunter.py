@@ -65,26 +65,20 @@ Return ONLY valid JSON with keys: 'title', 'skills', 'location'.
         except Exception:
             return {"title": "Software Developer", "skills": ["Python"], "location": "Remote"}
 
-    def search_linkedin(self, keyword: str, location: str = "Remote", limit: int = 10) -> List[Dict[str, Any]]:
-        """Searches LinkedIn public job listings."""
+    def search_linkedin(self, keyword: str, location: str = "India", limit: int = 10) -> List[Dict[str, Any]]:
+        """Searches all LinkedIn jobs: both Easy Apply and direct Company Career Website apply links."""
         jobs = []
         kw_encoded = urllib.parse.quote(keyword)
         loc_encoded = urllib.parse.quote(location)
-        # f_AL=true filters exclusively for Easy Apply jobs that submit automatically on LinkedIn
-        url = f"https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords={kw_encoded}&location={loc_encoded}&f_AL=true&start=0"
+        url = f"https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords={kw_encoded}&location={loc_encoded}&start=0"
         
         try:
             r = self.session.get(url, timeout=12)
             if r.status_code == 200:
                 soup = BeautifulSoup(r.text, 'html.parser')
-                cards = soup.find_all('li')
+                cards = soup.find_all(['li', 'div'], class_=lambda c: c and ('base-card' in c or 'job-search-card' in c))
                 if not cards:
-                    # Fallback to broader search if Easy Apply filter has low volume
-                    fallback_url = f"https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords={kw_encoded}&location={loc_encoded}&start=0"
-                    r_fb = self.session.get(fallback_url, timeout=12)
-                    if r_fb.status_code == 200:
-                        soup = BeautifulSoup(r_fb.text, 'html.parser')
-                        cards = soup.find_all('li')
+                    cards = soup.find_all('li')
                 for card in cards[:limit]:
                     try:
                         title_el = card.find('h3', class_='base-search-card__title')
@@ -97,14 +91,14 @@ Return ONLY valid JSON with keys: 'title', 'skills', 'location'.
                         loc = loc_el.get_text(strip=True) if loc_el else location
                         link = link_el['href'].split('?')[0] if link_el and 'href' in link_el.attrs else ""
                         
-                        if link:
+                        if link and self._is_relevant_tech_role(title) and self._is_preferred_location(loc):
                             jobs.append({
                                 'title': title,
                                 'company': company,
                                 'location': loc,
                                 'url': link,
-                                'source': 'LinkedIn',
-                                'description': f"{title} role at {company} in {loc}. Seeking skilled candidates with relevant technical background."
+                                'source': 'LinkedIn / Career Site',
+                                'description': f"{title} role at {company} in {loc}. Apply via LinkedIn or direct company career website."
                             })
                     except Exception:
                         continue
