@@ -442,20 +442,28 @@ class FormFiller:
             # Assert monitored email before submit
             self._assert_email_field(page, self.profile.get('email', 'divakantubothu@gmail.com'))
 
-            # CLICK FINAL SUBMIT BUTTON
-            if self._click_final_submit(page):
+            # CLICK FINAL SUBMIT BUTTON (Only valid if actual candidate fields were filled)
+            if fields_filled and self._click_final_submit(page):
                 logger.info("🎉 Final Submit Button clicked live on career website! Verifying confirmation state...")
                 time.sleep(4)
                 
                 # Check real post-submit confirmation signal
                 confirm_res = self._verify_post_submit_confirmation(page)
                 
-                return {
-                    'status': 'submitted' if confirm_res['verified'] else 'submitted_pending_email',
-                    'fields_filled': fields_filled,
-                    'confirmation_signal': confirm_res['signal'],
-                    'message': f"🎉 Application submitted! Confirmation signal: {confirm_res['signal']}"
-                }
+                if confirm_res.get('verified'):
+                    return {
+                        'status': 'submitted',
+                        'fields_filled': fields_filled,
+                        'confirmation_signal': confirm_res['signal'],
+                        'message': f"🎉 Application submitted! Confirmation signal: {confirm_res['signal']}"
+                    }
+                else:
+                    return {
+                        'status': 'submitted_pending_email',
+                        'fields_filled': fields_filled,
+                        'confirmation_signal': confirm_res.get('signal', 'Dispatched'),
+                        'message': f"Form fields filled ({', '.join(fields_filled)}). Confirmation pending async email."
+                    }
 
             # Step forward if multi-page form
             next_btn = page.locator('button:has-text("Next"), button:has-text("Save and Continue"), button:has-text("Continue"), button:has-text("Review")').first
@@ -483,10 +491,10 @@ class FormFiller:
             }
 
         return {
-            'status': 'submitted_pending_email',
+            'status': 'failed_submission',
             'fields_filled': fields_filled,
-            'confirmation_signal': confirm_res.get('signal', 'Dispatched'),
-            'message': f"Form fields filled ({', '.join(fields_filled)}). Confirmation pending async email."
+            'confirmation_signal': 'No Submit Clicked',
+            'message': f"Form fields filled ({', '.join(fields_filled)}), but final submit button was not reached or confirmed."
         }
 
     def _assert_email_field(self, page: Page, expected_email: str = "divakantubothu@gmail.com") -> bool:
@@ -592,12 +600,7 @@ class FormFiller:
                 logger.info(f"✅ Verified post-submit confirmation via DOM text: '{ctext}'")
                 return {'verified': True, 'hard_fail': False, 'signal': f'DOM confirmed: {ctext}'}
 
-        # 5. Check if Submit button disappeared (form closed/submitted)
-        submit_btn = page.locator('button[type="submit"]:has-text("Submit"), button:has-text("Submit application")').first
-        if not submit_btn.is_visible(timeout=800):
-            return {'verified': True, 'hard_fail': False, 'signal': 'Form submitted (Submit button unmounted)'}
-
-        return {'verified': False, 'hard_fail': False, 'signal': 'Awaiting email/server confirmation'}
+        return {'verified': False, 'hard_fail': False, 'signal': 'No explicit post-submit confirmation detected on page.'}
 
     def _click_final_submit(self, page: Page) -> bool:
         """Finds and clicks the primary submit button on the application form."""
