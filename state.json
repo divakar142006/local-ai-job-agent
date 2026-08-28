@@ -1,0 +1,85 @@
+{
+  "cookies": [
+    {
+      "name": "JSESSIONID",
+      "value": "ajax:6821650451951685812",
+      "domain": ".www.linkedin.com",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "lang",
+      "value": "v=2&lang=en-us",
+      "domain": ".linkedin.com",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "bcookie",
+      "value": "\"v=2&f639b72d-f218-48c6-8180-970c8d31df7c\"",
+      "domain": ".linkedin.com",
+      "path": "/",
+      "expires": 1819440474.94544,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "bscookie",
+      "value": "\"v=1&20260828080036812b166a-ac1d-4271-819d-47975032acb6AQHInD2jcg-8tnCC2B_k_bLrUYgvBRbL\"",
+      "domain": ".www.linkedin.com",
+      "path": "/",
+      "expires": 1819440474.945638,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "lidc",
+      "value": "\"b=TGST02:s=T:r=T:a=T:p=T:g=3833:u=1:x=1:i=1787904036:t=1787990436:v=2:sig=AQETy9tZGbjZqsyacBNzX7UYMpTr5ZW5\"",
+      "domain": ".linkedin.com",
+      "path": "/",
+      "expires": 1787990436.787912,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "sdui_ver",
+      "value": "sdui-flagship:0.1.50904.1+SduiFlagshipGuest",
+      "domain": ".linkedin.com",
+      "path": "/",
+      "expires": 1819440474.945153,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "timezone",
+      "value": "Asia/Calcutta",
+      "domain": ".www.linkedin.com",
+      "path": "/",
+      "expires": 1789114076,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "li_at",
+      "value": "AQEDAUb4WGIDBI8uAAABoEcBywgAAAGgaw5PCFYAzZ9z6mjOcJdVL-UgmW-WFNpdlj-Be5r8L0nkU_lEYsG6FgVGXxj_oGC3M-vrjwn7COXjVti3laAe8nSNg1MGTT8oaX8h21Vi5RG5Wsh-TmymNk4c",
+      "domain": ".linkedin.com",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    }
+  ],
+  "origins": []
+}
