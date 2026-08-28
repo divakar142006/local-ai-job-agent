@@ -239,6 +239,8 @@ class FormFiller:
                 try:
                     pw_inst.stop()
                 except Exception:
+                    pass
+
     def _check_and_bypass_cloudflare(self, page: Page) -> bool:
         """Detects and auto-clicks Cloudflare Turnstile verification checkboxes."""
         try:
