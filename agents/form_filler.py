@@ -23,10 +23,10 @@ logger = logging.getLogger(__name__)
 class FormFiller:
     """
     Autonomous Form Filler & Application Submitter:
-    - Uses persistent browser profile at D:\job-agent\browser_profile so LinkedIn session stays logged in forever.
+    - Uses Playwright storage_state (state.json) for 100% collision-free persistent logins.
     - Automates Easy Apply modals: fills details, uploads resume.pdf, answers questions, and submits.
     - Automates external career portals (Workday, Oracle Cloud, Greenhouse).
-    - Captures high-resolution screenshot proof of the confirmed submission.
+    - Captures high-resolution screenshot proof of confirmed submissions.
     """
 
     FIELD_SELECTORS = {
@@ -45,11 +45,9 @@ class FormFiller:
         self.profile = load_profile()
         self.ai = OllamaAI()
 
-    def get_profile_dir(self) -> str:
-        """Returns persistent browser profile directory."""
-        profile_dir = os.path.join(get_project_root(), "browser_profile")
-        os.makedirs(profile_dir, exist_ok=True)
-        return profile_dir
+    def get_state_file(self) -> str:
+        """Returns path to Playwright persistent storage state."""
+        return os.path.join(get_project_root(), "state.json")
 
     def get_resume_path(self) -> Optional[str]:
         """Resolves absolute path to Kantubothu Divakara Rao's official resume PDF."""
@@ -78,24 +76,36 @@ class FormFiller:
     def open_linkedin_login_session(self) -> Dict[str, Any]:
         """
         Opens a visible browser for the user to log in to LinkedIn once.
-        Saves session persistently to browser_profile.
+        Saves session cookies and tokens to state.json with ZERO profile collisions.
         """
         if not sync_playwright:
             return {'status': 'error', 'message': 'Playwright browser automation runs locally on your laptop.'}
 
-        profile_dir = self.get_profile_dir()
+        state_path = self.get_state_file()
         pw_inst = None
-        context = None
+        browser = None
 
         try:
             pw_inst = sync_playwright().start()
-            context = pw_inst.chromium.launch_persistent_context(
-                profile_dir,
+            browser = pw_inst.chromium.launch(
                 headless=False,
                 args=['--start-maximized', '--disable-blink-features=AutomationControlled']
             )
 
-            page = context.new_page() if not context.pages else context.pages[0]
+            # Load existing state if available
+            if os.path.exists(state_path):
+                context = browser.new_context(
+                    storage_state=state_path,
+                    viewport=None,
+                    user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                )
+            else:
+                context = browser.new_context(
+                    viewport=None,
+                    user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                )
+
+            page = context.new_page()
             page.goto("https://www.linkedin.com/login", wait_until='domcontentloaded', timeout=40000)
 
             # Wait up to 120 seconds for user to log in
@@ -103,15 +113,18 @@ class FormFiller:
                 time.sleep(2)
                 if "feed" in page.url or "mynetwork" in page.url or "jobs" in page.url:
                     time.sleep(2)
-                    return {'status': 'success', 'message': '🎉 Successfully logged in to LinkedIn! Your session is now saved.'}
+                    context.storage_state(path=state_path)
+                    logger.info(f"Saved active LinkedIn login state to {state_path}")
+                    return {'status': 'success', 'message': '🎉 Successfully logged in to LinkedIn! Your session is permanently saved.'}
 
-            return {'status': 'info', 'message': 'Browser session closed. If you logged in, your session is saved!'}
+            context.storage_state(path=state_path)
+            return {'status': 'info', 'message': 'Session saved. If you completed login, your LinkedIn account is now connected!'}
         except Exception as e:
             return {'status': 'error', 'message': str(e)}
         finally:
-            if context:
+            if browser:
                 try:
-                    context.close()
+                    browser.close()
                 except Exception:
                     pass
             if pw_inst:
@@ -123,7 +136,7 @@ class FormFiller:
     def auto_apply(self, url: str, cover_letter: Optional[str] = None, headless: bool = False) -> Dict[str, Any]:
         """
         AUTONOMOUS APPLY:
-        Opens persistent browser session, navigates to job URL, fills details,
+        Opens browser with stored login state, navigates to job URL, fills details,
         uploads resume.pdf, submits application, and captures screenshot proof.
         """
         if not sync_playwright:
@@ -131,23 +144,34 @@ class FormFiller:
 
         self.profile = load_profile()
         target_url = self.clean_job_url(url)
-        profile_dir = self.get_profile_dir()
+        state_path = self.get_state_file()
         proof_path = os.path.join(get_project_root(), "last_submission_proof.png")
 
         pw_inst = None
-        context = None
+        browser = None
 
         try:
             pw_inst = sync_playwright().start()
-            # Launch persistent browser profile
-            context = pw_inst.chromium.launch_persistent_context(
-                profile_dir,
+            browser = pw_inst.chromium.launch(
                 headless=headless,
                 slow_mo=500,
                 args=['--start-maximized', '--disable-blink-features=AutomationControlled']
             )
 
-            page = context.new_page() if not context.pages else context.pages[0]
+            # Create context with saved login state if present
+            if os.path.exists(state_path):
+                context = browser.new_context(
+                    storage_state=state_path,
+                    viewport=None,
+                    user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                )
+            else:
+                context = browser.new_context(
+                    viewport=None,
+                    user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                )
+
+            page = context.new_page()
             logger.info(f"Navigating to job: {target_url}")
 
             try:
@@ -206,10 +230,10 @@ class FormFiller:
             logger.error(f"Auto-apply error: {e}")
             return {'status': 'error', 'message': str(e)}
         finally:
-            if context:
+            if browser:
                 try:
                     time.sleep(3)
-                    context.close()
+                    browser.close()
                 except Exception:
                     pass
             if pw_inst:
