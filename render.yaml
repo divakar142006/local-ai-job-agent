@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: local-ai-job-agent
+    env: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
+    envVars:
+      - key: EMAIL_ADDRESS
+        value: divakantubothu@gmail.com
+      - key: EMAIL_APP_PASSWORD
+        value: dibi asqt dqlv dokl
+      - key: PORTAL_PASSWORD
+        value: Diva@142006
