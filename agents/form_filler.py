@@ -57,13 +57,14 @@ class FormFiller:
         return None
 
     def clean_job_url(self, url: str) -> str:
-        """Strips tracking params and canonicalizes LinkedIn job URLs."""
+        """Converts country subdomains (sg.linkedin.com, in.linkedin.com) and tracking links to canonical URLs."""
         if not url:
             return ""
-        if "linkedin.com/jobs/view" in url:
+        if "linkedin.com" in url:
             m = re.search(r'(\d{8,12})', url)
             if m:
                 return f"https://www.linkedin.com/jobs/view/{m.group(1)}/"
+            url = re.sub(r'https?://[a-zA-Z0-9-]+\.linkedin\.com', 'https://www.linkedin.com', url)
         return url.split("?")[0] if "?" in url and "http" in url else url
 
     def auto_apply(self, url: str, cover_letter: Optional[str] = None, headless: bool = False) -> Dict[str, Any]:
@@ -96,10 +97,13 @@ class FormFiller:
             logger.info(f"Navigating to: {target_url}")
 
             try:
-                page.goto(target_url, wait_until='domcontentloaded', timeout=40000)
+                page.goto(target_url, wait_until='domcontentloaded', timeout=30000)
             except Exception as e:
                 logger.warning(f"Initial navigation fallback: {e}")
-                page.goto(url, wait_until='load', timeout=40000)
+                try:
+                    page.goto(target_url, wait_until='load', timeout=30000)
+                except Exception as e2:
+                    logger.error(f"Navigation error: {e2}")
 
             time.sleep(3)
 
