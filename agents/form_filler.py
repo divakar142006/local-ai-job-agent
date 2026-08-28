@@ -97,20 +97,6 @@ class FormFiller:
                 user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             )
 
-            # Inject LinkedIn session cookie if available
-            settings = load_settings()
-            li_cookie = settings.get('linkedin_cookie') or self.profile.get('linkedin_cookie')
-            if li_cookie and len(li_cookie.strip()) > 20:
-                try:
-                    context.add_cookies([{
-                        'name': 'li_at',
-                        'value': li_cookie.strip(),
-                        'domain': '.linkedin.com',
-                        'path': '/'
-                    }])
-                except Exception:
-                    pass
-
             page = context.new_page()
             logger.info(f"Opening visible browser to: {target_url}")
 
