@@ -388,14 +388,22 @@ class FormFiller:
             self._handle_standard_checkboxes(page)
             self._handle_email_otp_verification(page, settings)
 
+            # Assert monitored email before submit
+            self._assert_email_field(page, self.profile.get('email', 'divakantubothu@gmail.com'))
+
             # CLICK FINAL SUBMIT BUTTON
             if self._click_final_submit(page):
-                logger.info("🎉 Final Submit Button clicked live on career website!")
-                time.sleep(5)
+                logger.info("🎉 Final Submit Button clicked live on career website! Verifying confirmation state...")
+                time.sleep(4)
+                
+                # Check real post-submit confirmation signal
+                confirm_res = self._verify_post_submit_confirmation(page)
+                
                 return {
-                    'status': 'submitted',
+                    'status': 'submitted' if confirm_res['verified'] else 'submitted_pending_email',
                     'fields_filled': fields_filled,
-                    'message': '🎉 Application successfully submitted to employer career portal!'
+                    'confirmation_signal': confirm_res['signal'],
+                    'message': f"🎉 Application submitted! Confirmation signal: {confirm_res['signal']}"
                 }
 
             # Step forward if multi-page form
@@ -406,11 +414,80 @@ class FormFiller:
             else:
                 break
 
+        confirm_res = self._verify_post_submit_confirmation(page)
         return {
-            'status': 'submitted',
+            'status': 'submitted' if confirm_res['verified'] else 'submitted_pending_email',
             'fields_filled': fields_filled,
-            'message': 'Application completed and submitted with official resume attached.'
+            'confirmation_signal': confirm_res['signal'],
+            'message': f"Application processed. Signal: {confirm_res['signal']}"
         }
+
+    def _assert_email_field(self, page: Page, expected_email: str = "divakantubothu@gmail.com") -> bool:
+        """Asserts that the email input contains the candidate's exact monitored email address."""
+        try:
+            email_locators = page.locator('input[type="email"], input[name*="email" i], input[id*="email" i]').all()
+            for loc in email_locators:
+                if loc.is_visible():
+                    val = loc.input_value()
+                    if not val or val.strip().lower() != expected_email.lower():
+                        loc.fill(expected_email)
+            return True
+        except Exception:
+            return False
+
+    def _verify_post_submit_confirmation(self, page: Page) -> Dict[str, Any]:
+        """
+        Validates real post-submit confirmation signals:
+        1. Checks for confirmation URL redirection (/thank-you, /confirmation, /success, /submitted).
+        2. Checks DOM for verified confirmation elements ("Application submitted", "Thank you for applying").
+        3. Checks if submit button disappeared (form closed/submitted).
+        """
+        CONFIRMATION_TEXTS = [
+            "application submitted",
+            "thank you for applying",
+            "application received",
+            "application has been submitted",
+            "we have received your application",
+            "thanks for applying",
+            "thanks for your interest",
+            "application sent",
+            "vielen dank",
+            "bewerbung erfolgreich",
+            "deine bewerbung ist eingegangen",
+            "candidature",
+            "application successfully submitted"
+        ]
+        
+        CONFIRMATION_URLS = [
+            "/confirmation", "/thank-you", "/thanks", "/success", "/submitted", "/post-apply", "application-received"
+        ]
+        
+        time.sleep(2)
+        current_url = page.url.lower()
+        page_text = ""
+        try:
+            page_text = page.inner_text("body").lower()
+        except Exception:
+            pass
+
+        # 1. URL Pattern check
+        for curl in CONFIRMATION_URLS:
+            if curl in current_url:
+                logger.info(f"✅ Verified post-submit confirmation via URL pattern: {curl}")
+                return {'verified': True, 'signal': f'URL redirected to {current_url}'}
+
+        # 2. DOM text confirmation check
+        for ctext in CONFIRMATION_TEXTS:
+            if ctext in page_text:
+                logger.info(f"✅ Verified post-submit confirmation via DOM text: '{ctext}'")
+                return {'verified': True, 'signal': f'DOM confirmed: {ctext}'}
+
+        # 3. Check if Submit button disappeared (form closed/submitted)
+        submit_btn = page.locator('button[type="submit"]:has-text("Submit"), button:has-text("Submit application")').first
+        if not submit_btn.is_visible(timeout=800):
+            return {'verified': True, 'signal': 'Form submitted (Submit button closed)'}
+
+        return {'verified': False, 'signal': 'Awaiting email/server confirmation'}
 
     def _click_final_submit(self, page: Page) -> bool:
         """Finds and clicks the primary submit button on the application form."""

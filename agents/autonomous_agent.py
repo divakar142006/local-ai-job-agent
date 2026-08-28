@@ -230,46 +230,54 @@ class AutonomousJobAgent:
             try:
                 mail = imaplib.IMAP4_SSL("imap.gmail.com", 993)
                 mail.login(email_addr, pwd)
-                mail.select("INBOX")
 
-                status, messages = mail.search(None, "ALL")
-                if status == "OK" and messages[0]:
-                    msg_ids = messages[0].split()[-12:]
+                folders = ["INBOX", '"[Gmail]/All Mail"', '"[Gmail]/Spam"']
+                for folder in folders:
+                    try:
+                        res, _ = mail.select(folder)
+                        if res != "OK":
+                            continue
 
-                    for mid in reversed(msg_ids):
-                        _, data = mail.fetch(mid, "(RFC822.HEADER)")
-                        msg = email.message_from_bytes(data[0][1])
-                        sub = msg.get("Subject", "")
-                        from_ = msg.get("From", "")
+                        status, messages = mail.search(None, "ALL")
+                        if status == "OK" and messages[0]:
+                            msg_ids = messages[0].split()[-12:]
 
-                        sub_decoded = ""
-                        for part, enc in decode_header(sub):
-                            if isinstance(part, bytes):
-                                sub_decoded += part.decode(enc or 'utf-8', errors='ignore')
-                            else:
-                                sub_decoded += str(part)
+                            for mid in reversed(msg_ids):
+                                _, data = mail.fetch(mid, "(RFC822.HEADER)")
+                                msg = email.message_from_bytes(data[0][1])
+                                sub = msg.get("Subject", "")
+                                from_ = msg.get("From", "")
 
-                        from_decoded = ""
-                        for part, enc in decode_header(from_):
-                            if isinstance(part, bytes):
-                                from_decoded += part.decode(enc or 'utf-8', errors='ignore')
-                            else:
-                                from_decoded += str(part)
+                                sub_decoded = ""
+                                for part, enc in decode_header(sub):
+                                    if isinstance(part, bytes):
+                                        sub_decoded += part.decode(enc or 'utf-8', errors='ignore')
+                                    else:
+                                        sub_decoded += str(part)
 
-                        combined = f"{sub_decoded} {from_decoded}".lower()
+                                from_decoded = ""
+                                for part, enc in decode_header(from_):
+                                    if isinstance(part, bytes):
+                                        from_decoded += part.decode(enc or 'utf-8', errors='ignore')
+                                    else:
+                                        from_decoded += str(part)
 
-                        # Tally Condition 1: Direct Company Match
-                        if any(cp in combined for cp in comp_parts):
-                            mail.logout()
-                            return True, f"Verified Company Email: '{from_decoded}' - '{sub_decoded}'"
+                                combined = f"{sub_decoded} {from_decoded}".lower()
 
-                        # Tally Condition 2: Role keywords + Application keywords
-                        has_app_keyword = any(k in combined for k in ['application', 'bewerbung', 'received', 'recruiting', 'join.com', 'greenhouse', 'lever', 'linkedin', 'workday'])
-                        has_role_keyword = any(rw in combined for rw in role_words)
+                                # Tally Condition 1: Direct Company Match
+                                if any(cp in combined for cp in comp_parts):
+                                    mail.logout()
+                                    return True, f"Verified Company Email ({folder}): '{from_decoded}' - '{sub_decoded}'"
 
-                        if has_app_keyword and (has_role_keyword or 'linkedin' in from_decoded.lower()):
-                            mail.logout()
-                            return True, f"Verified ATS Confirmation: '{from_decoded}' - '{sub_decoded}'"
+                                # Tally Condition 2: Role keywords + Application keywords
+                                has_app_keyword = any(k in combined for k in ['application', 'bewerbung', 'received', 'recruiting', 'join.com', 'greenhouse', 'lever', 'linkedin', 'workday'])
+                                has_role_keyword = any(rw in combined for rw in role_words)
+
+                                if has_app_keyword and (has_role_keyword or 'linkedin' in from_decoded.lower()):
+                                    mail.logout()
+                                    return True, f"Verified ATS Confirmation ({folder}): '{from_decoded}' - '{sub_decoded}'"
+                    except Exception:
+                        continue
 
                 mail.logout()
             except Exception as e:
