@@ -14,6 +14,7 @@ from agents.matcher import JobMatcher
 from agents.cover_letter import CoverLetterGenerator
 from agents.form_filler import FormFiller
 from agents.notifier import SMSNotifier
+from agents.auto_hunter import AutoJobHunter
 from utils.helpers import load_profile, load_keywords, load_settings, save_yaml, get_project_root
 from utils.ollama_client import OllamaAI
 
@@ -51,6 +52,10 @@ def get_form_filler():
 def get_notifier():
     return SMSNotifier()
 
+@st.cache_resource
+def get_auto_hunter():
+    return AutoJobHunter()
+
 # Check AI Connection Live
 ollama_ai = get_ollama_client()
 ai_info = ollama_ai.get_status_info()
@@ -59,7 +64,10 @@ st.session_state.ai_provider = ai_info["provider"]
 
 # Sidebar Navigation
 st.sidebar.title("🤖 AI Job Application Agent")
-page = st.sidebar.radio("Navigation", ["📋 Add Job", "📊 Job Pipeline", "🚀 Apply", "⚙️ Settings"])
+page = st.sidebar.radio(
+    "Navigation",
+    ["📋 Add Job", "🎯 Auto Search & Apply", "📊 Job Pipeline", "🚀 Apply", "⚙️ Settings"]
+)
 
 st.sidebar.divider()
 col_st1, col_st2 = st.sidebar.columns([3, 1])
@@ -107,8 +115,8 @@ def set_job_cover_letter(job_instance, cl_text):
 # PAGE 1: ADD JOB
 # =====================================================================
 if page == "📋 Add Job":
-    st.header("📋 Add & Analyze Job")
-    st.write("Paste a job URL from LinkedIn / Naukri or paste the raw description directly. The AI will evaluate your fit and draft a custom cover letter.")
+    st.header("📋 Add & Analyze Single Job")
+    st.write("Paste a specific job URL or description text. The AI will evaluate your fit and draft a customized cover letter.")
 
     col_url, col_desc = st.columns([1, 1])
     with col_url:
@@ -236,7 +244,84 @@ if page == "📋 Add Job":
                     st.error(f"Failed to save job: {e}")
 
 # =====================================================================
-# PAGE 2: JOB PIPELINE
+# PAGE 2: AUTO SEARCH & APPLY (AUTONOMOUS AGENT)
+# =====================================================================
+elif page == "🎯 Auto Search & Apply":
+    st.header("🎯 Autonomous Job Search & Auto-Apply")
+    st.write("Give the AI agent a target job description or role. It will **search online job openings**, **evaluate matching scores**, **write custom cover letters**, and **automatically add them to your application pipeline**.")
+
+    col_inp1, col_inp2 = st.columns([2, 1])
+    with col_inp1:
+        hunt_input = st.text_area(
+            "Paste Job Description or Target Role",
+            placeholder="e.g. Looking for a Python Developer with experience in Django, FastAPI, PostgreSQL, and building REST APIs...",
+            height=140
+        )
+    with col_inp2:
+        max_jobs = st.slider("Number of Similar Jobs to Hunt", min_value=1, max_value=15, value=5)
+        min_score = st.slider("Minimum Match Fit Score (%)", min_value=30, max_value=90, value=50)
+        auto_launch = st.checkbox("Auto-open browser for pre-filling (local laptop only)", value=False)
+
+    if st.button("⚡ Start Autonomous Hunt & Apply", type="primary"):
+        if not hunt_input.strip():
+            st.error("Please enter a job description or job title to search for.")
+        else:
+            hunter = get_auto_hunter()
+            progress_container = st.container()
+            results_container = st.container()
+            
+            with progress_container:
+                st.subheader("🤖 Agent Live Activity Feed")
+                status_box = st.empty()
+                progress_bar = st.progress(0)
+
+                discovered_jobs = []
+                step_idx = 0
+
+                for update in hunter.auto_hunt_and_apply(
+                    job_description=hunt_input,
+                    max_jobs=max_jobs,
+                    min_score=min_score,
+                    auto_launch_browser=auto_launch
+                ):
+                    step_type = update.get("step")
+                    message = update.get("message", "")
+                    status_box.info(message)
+
+                    if step_type == "job_completed":
+                        discovered_jobs.append(update)
+                        progress_val = min(len(discovered_jobs) / max_jobs, 1.0)
+                        progress_bar.progress(progress_val)
+                    elif step_type == "finished":
+                        progress_bar.progress(1.0)
+                        status_box.success(message)
+
+            if discovered_jobs:
+                with results_container:
+                    st.divider()
+                    st.subheader(f"🎉 Successfully Processed ({len(discovered_jobs)}) Matching Jobs")
+                    
+                    for item in discovered_jobs:
+                        job = item["job"]
+                        score = item["score"]
+                        cl = item["cover_letter"]
+                        badge = "🟢" if score >= 70 else "🟠"
+                        
+                        with st.expander(f"{badge} {job['title']} at {job['company']} — Match: {score}%"):
+                            col_a, col_b = st.columns([2, 1])
+                            with col_a:
+                                st.write(f"**Location:** {job.get('location', 'Remote')}")
+                                if job.get('url'):
+                                    st.markdown(f"**Job Link:** [{job['url']}]({job['url']})")
+                                st.write(f"**AI Match Reasoning:** {job.get('match_reasoning', 'Strong candidate alignment')}")
+                            with col_b:
+                                st.metric("Match Score", f"{score}%")
+                                
+                            st.write("**Tailored Cover Letter:**")
+                            st.text_area("Cover Letter", value=cl, height=150, key=f"hunt_cl_{job['title']}_{job['company']}")
+
+# =====================================================================
+# PAGE 3: JOB PIPELINE
 # =====================================================================
 elif page == "📊 Job Pipeline":
     st.header("📊 Job Application Pipeline")
@@ -328,7 +413,7 @@ elif page == "📊 Job Pipeline":
         display_jobs(base_query.where(Job.status == "rejected"), "rejected")
 
 # =====================================================================
-# PAGE 3: APPLY
+# PAGE 4: APPLY
 # =====================================================================
 elif page == "🚀 Apply":
     st.header("🚀 Semi-Automated Application")
@@ -399,7 +484,7 @@ elif page == "🚀 Apply":
                 st.rerun()
 
 # =====================================================================
-# PAGE 4: SETTINGS
+# PAGE 5: SETTINGS
 # =====================================================================
 elif page == "⚙️ Settings":
     st.header("⚙️ Settings & Configuration")
@@ -499,7 +584,7 @@ elif page == "⚙️ Settings":
             settings['ollama']['model'] = ollama_model
 
             try:
-                save_yaml(os.path.join(os.path.dirname(os.path.abspath(__file__)), "config", "settings.yaml"), settings)
+                save_yaml(os.path.join(get_project_root(), "config", "settings.yaml"), settings)
             except Exception:
                 pass
             st.cache_resource.clear()
@@ -541,7 +626,7 @@ elif page == "⚙️ Settings":
                 settings['twilio']['auth_token'] = token
                 settings['twilio']['from_number'] = from_num
                 settings['twilio']['to_number'] = to_num
-                save_yaml(os.path.join(os.path.dirname(os.path.abspath(__file__)), "config", "settings.yaml"), settings)
+                save_yaml(os.path.join(get_project_root(), "config", "settings.yaml"), settings)
                 st.success("Twilio settings saved!")
         with col_t2:
             if st.form_submit_button("📩 Send Test SMS"):
